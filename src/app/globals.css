@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --radius: 14px;
+}
+
+html, body, :root {
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(1000px 600px at 10% 10%, rgba(76, 0, 255, 0.15), transparent 60%),
+              radial-gradient(800px 500px at 90% 20%, rgba(0, 255, 200, 0.12), transparent 60%),
+              radial-gradient(700px 400px at 50% 100%, rgba(255, 0, 153, 0.12), transparent 60%),
+              hsl(230 20% 6%);
+  color: hsl(0 0% 98%);
+}
+
+.glass {
+  background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.14),
+      rgba(255, 255, 255, 0.06)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.12) 50%, rgba(255,255,255,0) 100%);
+  background-size: 1400px 100%;
+}
+
+.btn {
+  @apply rounded-xl px-4 py-2 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed;
+}
+
+.btn-primary {
+  @apply btn bg-white/10 hover:bg-white/20 text-white border border-white/20;
+}
+
+.btn-accent {
+  @apply btn bg-emerald-400/90 hover:bg-emerald-400 text-emerald-950;
+}
+
+.input {
+  @apply w-full rounded-2xl bg-white/5 border border-white/15 px-4 py-3 placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/30;
+}
+
+.card {
+  @apply glass rounded-3xl p-6;
+}
+
+/* Simple animation utilities */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-in { animation: fadeIn 500ms ease both; }
+.fade-in {}
+.slide-in-from-bottom-4 {}
+.slide-in-from-left-4 { transform-origin: left; }
+.slide-in-from-right-4 { transform-origin: right; }
+
+/* Nav link underline animation */
+.nav-link {
+  position: relative;
+}
+.nav-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 0;
+  height: 2px;
+  background: currentColor;
+  transition: width 200ms ease;
+}
+.nav-link:hover::after {
+  width: 100%;
+}
+
+
+

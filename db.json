@@ -1,0 +1,34 @@
+{
+  "users": [
+    {
+      "id": "25310c9a-bf00-47f8-a1f9-e780e7534f02",
+      "email": "omarbehri1@gmail.com",
+      "name": "OmarBehri",
+      "hash": "$2a$10$RbQVjGb7LMrF3qEnwK/4QuolYhY5pYp85i4cIKKTcyXkKsyp5wkIS",
+      "credits": 100
+    }
+  ],
+  "videos": [
+    {
+      "id": "714d16de-aef1-42e7-995b-61cb3e1b401e",
+      "userId": "25310c9a-bf00-47f8-a1f9-e780e7534f02",
+      "title": "In a dusty corner of a secondhand bookstore in Rabat, a young student named Yous...",
+      "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      "quality": "LOW",
+      "createdAt": 1754670204147
+    }
+  ],
+  "jobs": [
+    {
+      "id": "fd9cc1ff-0ba0-4949-8453-8b90d4f49970",
+      "userId": "25310c9a-bf00-47f8-a1f9-e780e7534f02",
+      "status": "done",
+      "payload": {
+        "story": "In a dusty corner of a secondhand bookstore in Rabat, a young student named Youssef found an old leather-bound notebook. It had no title, no name—just a golden symbol on the front: a spiral with a dot in the center.\n\nHe bought it for five dirhams, not thinking much of it.\n\nThat night, while reviewing his engineering notes, he idly opened the notebook. To his surprise, the first page wasn’t blank. It had a message written in neat cursive:\n\n“Write only what you seek, and it shall begin.”\n\nAmused, Youssef wrote:\n“I want to understand everything before the exam.”\n\nThe moment the ink dried, the notebook grew warm. The diagrams in his class notes shimmered. Equations he had struggled with for weeks now unfolded in his mind as if a teacher were whispering the logic in his ear. He passed his exam with full marks—without cheating, and without even needing to study further.\n\nThe next day, he wrote again:\n“I want to wake up early tomorrow, fully rested.”\n\nIt worked. Again and again, the notebook granted him what he asked—but only when it was genuine, simple, and selfless.\n\nHe tried writing bigger things:\n“I want to win the lottery.”\nNothing happened.\n“I want to be famous.”\nStill nothing.\n\nHe soon realized: the notebook didn’t reward greed.\n\nOne day, he saw a homeless man sleeping near the tram station. It was raining. Without much thought, Youssef took the notebook out and wrote:\n\n“I want this man to have a warm home.”\n\nThe next day, the man was gone. Curious, Youssef asked around and found out that someone had taken the man in—an old retired teacher who had once been homeless himself.\n\nYoussef continued to use the notebook—not to change his life, but to quietly improve the world around him. A meal for a hungry kid. A scholarship for a struggling student. A repaired roof for a widow in the medina.\n\nOne day, the pages ran out.\n\nThe last sentence he wrote began to fade, and new words appeared instead:\n\n“Now that you understand what it means to ask, the world awaits your answer.”\n\nThe notebook closed on its own.\n\nYoussef never found it again. But he didn’t need it anymore.",
+        "style": "Studio Ghibli, soft pastel, dreamy, volumetric light",
+        "quality": "LOW"
+      },
+      "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+    }
+  ]
+}
