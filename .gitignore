@@ -33,3 +33,11 @@ coverage/
 
 # TypeScript cache
 *.tsbuildinfo
+
+public/assets/images
+public/assets/audio
+public/assets/videos
+
+temp/
+
+image_outputs/

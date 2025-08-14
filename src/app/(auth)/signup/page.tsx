@@ -1,8 +1,12 @@
 "use client";
 import Link from 'next/link';
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function SignUpPage() {
+  const { signUp } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -16,15 +20,10 @@ export default function SignUpPage() {
     setError(null);
     try {
       if (password !== confirm) throw new Error('Passwords do not match');
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, password })
-      });
-      if (!res.ok) throw new Error('Failed');
-      window.location.href = '/generate';
+      await signUp(email, name, password);
+      router.push('/generate');
     } catch (err: any) {
-      setError('Could not create account');
+      setError(err.message || 'Could not create account');
     } finally {
       setLoading(false);
     }

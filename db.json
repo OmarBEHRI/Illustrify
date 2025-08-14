@@ -16,6 +16,30 @@
       "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
       "quality": "LOW",
       "createdAt": 1754670204147
+    },
+    {
+      "id": "0db305bd-c314-41c2-b3d1-b9bb2732af32",
+      "userId": "test-user-123",
+      "title": "A young girl discovers a magical garden behind her house. She finds glowing flow...",
+      "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      "quality": "LOW",
+      "createdAt": 1754829087166
+    },
+    {
+      "id": "f4ddf95b-099e-4ed7-95c6-afee6fa10841",
+      "userId": "test-user-123",
+      "title": "A young girl discovers a magical door in her grandmother's attic. She opens it a...",
+      "url": "/assets/videos/2d475c08-848d-47df-a7d7-59e0fa188409.mp4",
+      "quality": "LOW",
+      "createdAt": 1754914341944
+    },
+    {
+      "id": "855ba5ad-3699-415b-9058-4ffad557961c",
+      "userId": "test-user-123",
+      "title": "The Adventure of Pudding the Hamster\n\nPudding the hamster was convinced she was ...",
+      "url": "/assets/videos/64e730e3-a3e5-4e5b-8a5e-179fb2cd23ea.mp4",
+      "quality": "LOW",
+      "createdAt": 1755085734314
     }
   ],
   "jobs": [
@@ -29,6 +53,99 @@
         "quality": "LOW"
       },
       "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+    },
+    {
+      "id": "33306ab1-9f07-4b32-bc0e-8a589b53c9d3",
+      "userId": "test-user-123",
+      "status": "done",
+      "payload": {
+        "story": "A young girl discovers a magical garden behind her house. She finds glowing flowers that sing beautiful melodies.",
+        "style": "Studio Ghibli, soft pastel, dreamy, volumetric light",
+        "quality": "LOW"
+      },
+      "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+    },
+    {
+      "id": "91cb306b-b9b7-4c41-8198-fe98e9739e72",
+      "userId": "test-user-123",
+      "status": "error",
+      "payload": {
+        "story": "A brave knight embarks on a quest to save a magical kingdom from an evil dragon. The knight travels through enchanted forests and climbs treacherous mountains before facing the dragon in an epic battle.",
+        "style": "fantasy",
+        "quality": "LOW"
+      }
+    },
+    {
+      "id": "22edc18c-deaa-4333-a9d7-9f4df6105496",
+      "userId": "test-user-123",
+      "status": "error",
+      "payload": {
+        "story": "A brave knight embarks on a quest to save a magical kingdom from an evil dragon. The knight travels through enchanted forests and climbs treacherous mountains before facing the dragon in an epic battle.",
+        "style": "fantasy",
+        "quality": "LOW"
+      }
+    },
+    {
+      "id": "0a2f5f59-44c5-496c-90b5-676b0b02bad7",
+      "userId": "test-user-123",
+      "status": "error",
+      "payload": {
+        "story": "A brave knight embarks on a quest to save a magical kingdom from an evil dragon. The knight travels through enchanted forests and climbs treacherous mountains before facing the dragon in an epic battle.",
+        "style": "fantasy",
+        "quality": "LOW"
+      }
+    },
+    {
+      "id": "7ccd1fae-0f37-44f5-8b29-db7217ebb996",
+      "userId": "test-user-123",
+      "status": "error",
+      "payload": {
+        "story": "A peaceful cat sits by a sunny window, watching colorful birds fly by in the garden.",
+        "style": "realistic",
+        "quality": "STANDARD"
+      }
+    },
+    {
+      "id": "96c5a8d5-d5c8-44ae-b563-a53b021e5242",
+      "userId": "test-user-123",
+      "status": "error",
+      "payload": {
+        "story": "A young girl discovers a magical door in her grandmother's attic. She opens it and finds herself in a beautiful enchanted forest filled with talking animals. The animals tell her she is the chosen one who can save their world from an evil wizard. She embarks on a quest, faces the wizard in his dark castle, and uses her courage and kindness to defeat him. She returns home as a hero, but keeps the magical door as her secret.",
+        "style": "fantasy illustration, vibrant colors, magical atmosphere",
+        "quality": "LOW"
+      }
+    },
+    {
+      "id": "cf94c1fb-b2c5-4a37-86c8-2d122a29947a",
+      "userId": "test-user-123",
+      "status": "processing",
+      "payload": {
+        "story": "A brave knight discovers a hidden treasure in an ancient castle.",
+        "style": "medieval fantasy art",
+        "quality": "LOW"
+      }
+    },
+    {
+      "id": "98dab1ad-a2ec-4fa4-8e17-f41c1217d527",
+      "userId": "test-user-123",
+      "status": "done",
+      "payload": {
+        "story": "A young girl discovers a magical door in her grandmother's attic. She opens it and finds herself in a beautiful enchanted forest filled with talking animals. The animals tell her she is the chosen one who can save their world from an evil wizard. She embarks on a quest, faces the wizard in his dark castle, and uses her courage and kindness to defeat him. She returns home as a hero, but keeps the magical door as her secret.",
+        "style": "fantasy illustration, vibrant colors, magical atmosphere",
+        "quality": "LOW"
+      },
+      "url": "/assets/videos/2d475c08-848d-47df-a7d7-59e0fa188409.mp4"
+    },
+    {
+      "id": "a55baedb-bc94-4884-9c27-9aa6132d1ceb",
+      "userId": "test-user-123",
+      "status": "done",
+      "payload": {
+        "story": "The Adventure of Pudding the Hamster\n\nPudding the hamster was convinced she was secretly a mighty explorer. Every night, when the house was quiet, she’d pack her “adventure bag” (which was actually her cheeks full of sunflower seeds) and set off across the living room.\n\nOne night, she discovered a “giant golden mountain” — in reality, it was just a pile of cornflakes spilled by her human during breakfast. Pudding climbed to the top, declared herself Queen of Crunch, and began her feast.\n\nJust as she was about to return to her cage, her best friend, Whiskers the cat, appeared. Normally, a hamster might be nervous about a cat, but Whiskers had sworn an oath never to eat anyone who shared snacks. So together, they sat under the moonlight streaming through the window, sharing cornflakes and dreaming about the next great expedition — maybe to the legendary Land of Forgotten Socks.\n\nThe night ended with Pudding safely tucked into her cage, cheeks puffed, tail twitching, already plotting her next adventure.",
+        "style": "cartoon style, bold outlines, bright colors, playful and fun",
+        "quality": "LOW"
+      },
+      "url": "/assets/videos/64e730e3-a3e5-4e5b-8a5e-179fb2cd23ea.mp4"
     }
   ]
 }

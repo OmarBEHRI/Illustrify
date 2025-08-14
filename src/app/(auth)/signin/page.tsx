@@ -1,8 +1,12 @@
 "use client";
 import Link from 'next/link';
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function SignInPage() {
+  const { signIn } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,15 +17,10 @@ export default function SignInPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      if (!res.ok) throw new Error('Failed');
-      window.location.href = '/generate';
+      await signIn(email, password);
+      router.push('/generate');
     } catch (err: any) {
-      setError('Invalid credentials');
+      setError(err.message || 'Invalid credentials');
     } finally {
       setLoading(false);
     }

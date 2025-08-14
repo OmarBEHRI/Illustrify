@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
-  const url = new URL('/', req.url);
-  const res = NextResponse.redirect(url);
-  res.cookies.set('uid', '', { maxAge: 0 });
-  return res;
+  // Since we're using client-side auth with PocketBase, 
+  // we just need to redirect back to the profile page
+  // The actual sign out will be handled on the client side
+  return NextResponse.redirect(new URL('/profile', req.url));
 }
-
-

@@ -1,56 +1,149 @@
 import { NextResponse } from 'next/server';
-import { createJob, getCurrentUser, getJob, saveVideo, spendCredits, updateJob } from '@/server/db';
+import pb, { pbHelpers } from '@/lib/pocketbase';
 import { generateVideo } from '@/server/videoAssembly';
 
-function qualityCost(q: 'LOW'|'MEDIUM'|'MAX') { return q==='LOW'?0:q==='MEDIUM'?10:50; }
+function qualityCost(q: 'LOW'|'HIGH'|'MAX') { return q==='LOW'?0:q==='HIGH'?10:50; }
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { story, style, quality } = await req.json();
-  if (!story || !quality) return NextResponse.json({ error: 'Bad request' }, { status: 400 });
-  const q = (String(quality).toUpperCase() as 'LOW'|'MEDIUM'|'MAX');
-  const cost = qualityCost(q);
   try {
-    if (cost > 0) await spendCredits(user.id, cost);
-  } catch {
-    return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
-  }
-  const job = await createJob(user.id, { story, style, quality: q });
-
-  // Start real video generation pipeline
-  setTimeout(async () => {
-    try {
-      await updateJob(job.id, { status: 'processing' });
-      
-      console.log(`[Generate API] Starting video generation for job ${job.id}`);
-      const result = await generateVideo(story, style);
-      
-      if (result.success && result.videoUrl) {
-        const videoTitle = (story as string).slice(0, 80) + '...';
-        await saveVideo(user.id, videoTitle, result.videoUrl, q);
-        await updateJob(job.id, { status: 'done', url: result.videoUrl });
-        console.log(`[Generate API] Video generation completed for job ${job.id}: ${result.videoUrl}`);
-      } else {
-        console.error(`[Generate API] Video generation failed for job ${job.id}:`, result.error);
-        await updateJob(job.id, { status: 'error' });
-      }
-    } catch (e: any) {
-      console.error(`[Generate API] Video generation error for job ${job.id}:`, e);
-      await updateJob(job.id, { status: 'error' });
+    // Get auth token from Authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-  }, 1000);
 
-  return NextResponse.json({ jobId: job.id });
+    const token = authHeader.substring(7);
+    pb.authStore.save(token, null);
+    
+    if (!pb.authStore.isValid || !pb.authStore.model) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = pb.authStore.model;
+    
+    const { story, style, quality } = await req.json();
+    if (!story || !quality) return NextResponse.json({ error: 'Bad request' }, { status: 400 });
+    
+    const q = (String(quality).toUpperCase() as 'LOW'|'HIGH'|'MAX');
+    const cost = qualityCost(q);
+    
+    // Check and spend credits
+    try {
+      if (cost > 0) {
+        await pbHelpers.spendCredits(user.id, cost);
+      }
+    } catch {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+    
+    // Create job
+    const job = await pbHelpers.createJob(user.id, { 
+      story_input: story, 
+      visual_style: style, 
+      quality: q,
+      input_type: 'text'
+    });
+
+    // Start video generation pipeline
+    setTimeout(async () => {
+      try {
+        await pbHelpers.updateJob(job.id, { 
+          status: 'processing',
+          progress_data: { step: 'extracting', progress: 10, message: 'Starting generation...' }
+        });
+        
+        console.log(`[Generate API] Starting video generation for job ${job.id}`);
+        
+        // Update progress during generation
+        await pbHelpers.updateJob(job.id, { 
+          progress_data: { step: 'scenes', progress: 25, message: 'Creating scenes...' }
+        });
+        
+        const result = await generateVideo(story, style);
+        
+        if (result.success && result.videoUrl) {
+          const videoTitle = (story as string).slice(0, 80) + '...';
+          
+          // Save video
+          const video = await pbHelpers.saveVideo(
+            user.id, 
+            videoTitle, 
+            result.videoUrl, 
+            q,
+            story,
+            style
+          );
+          
+          // Update job as completed
+          await pbHelpers.updateJob(job.id, { 
+            status: 'completed', 
+            video: video.id,
+            progress_data: { step: 'done', progress: 100, message: 'Video generated successfully!' }
+          });
+          
+          console.log(`[Generate API] Video generation completed for job ${job.id}: ${result.videoUrl}`);
+        } else {
+          console.error(`[Generate API] Video generation failed for job ${job.id}:`, result.error);
+          await pbHelpers.updateJob(job.id, { 
+            status: 'failed',
+            error_message: result.error || 'Video generation failed'
+          });
+        }
+      } catch (e: any) {
+        console.error(`[Generate API] Video generation error for job ${job.id}:`, e);
+        await pbHelpers.updateJob(job.id, { 
+          status: 'failed',
+          error_message: e.message || 'Unknown error occurred'
+        });
+      }
+    }, 1000);
+
+    return NextResponse.json({ jobId: job.id });
+  } catch (error: any) {
+    console.error('Generate API error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
-  if (!id) return NextResponse.json({ error: 'No id' }, { status: 400 });
-  const job = await getJob(id);
-  if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ status: job.status, url: job.url ?? null });
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'No id' }, { status: 400 });
+    
+    // Get auth token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+    pb.authStore.save(token, null);
+    
+    const job = await pbHelpers.getJob(id);
+    if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    
+    // Get video URL if job is completed
+    let videoUrl = null;
+    if (job.status === 'completed' && job.video) {
+      try {
+        const video = await pb.collection('videos').getOne(job.video);
+        videoUrl = video.video_url;
+      } catch (error) {
+        console.error('Error fetching video:', error);
+      }
+    }
+    
+    return NextResponse.json({ 
+      status: job.status, 
+      url: videoUrl,
+      progress: job.progress_data,
+      error: job.error_message
+    });
+  } catch (error: any) {
+    console.error('Get job error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 
