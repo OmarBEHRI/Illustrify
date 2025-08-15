@@ -15,7 +15,7 @@ export default function ProtectedRoute({ children, redirectTo = '/signin' }: Pro
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push(redirectTo);
+      router.push(redirectTo as any);
     }
   }, [user, loading, router, redirectTo]);
 

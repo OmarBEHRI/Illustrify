@@ -51,6 +51,7 @@ export interface Scene {
   narration: string;
   image_url?: string;
   audio_url?: string;
+  video_url?: string;
   duration?: number;
   created: string;
 }
@@ -88,12 +89,12 @@ export const pbHelpers = {
     
     const record = await pb.collection('users').create(userData);
     await pb.collection('users').authWithPassword(email, password);
-    return record as User;
+    return record as unknown as User;
   },
 
   async signIn(email: string, password: string): Promise<User> {
     const authData = await pb.collection('users').authWithPassword(email, password);
-    return authData.record as User;
+    return authData.record as unknown as User;
   },
 
   signOut() {
@@ -152,6 +153,8 @@ export const pbHelpers = {
     visual_style: string;
     quality: 'LOW' | 'HIGH' | 'MAX';
     input_type: 'text' | 'pdf' | 'youtube';
+    tts_engine?: string;
+    voice?: string;
   }): Promise<GenerationJob> {
     const jobData = {
       user: userId,
@@ -160,7 +163,7 @@ export const pbHelpers = {
     };
     
     const record = await pb.collection('generation_jobs').create(jobData);
-    return record as GenerationJob;
+    return record as unknown as GenerationJob;
   },
 
   async updateJob(jobId: string, updates: Partial<GenerationJob>): Promise<GenerationJob> {
@@ -231,6 +234,19 @@ export const pbHelpers = {
   async getVideoScenes(videoId: string): Promise<Scene[]> {
     const records = await pb.collection('scenes').getFullList({
       filter: `video = "${videoId}"`,
+      sort: 'scene_order',
+    });
+    return records as Scene[];
+  },
+
+  async updateScene(sceneId: string, updates: Partial<Scene>): Promise<Scene> {
+    const record = await pb.collection('scenes').update(sceneId, updates);
+    return record as Scene;
+  },
+
+  async getJobScenes(jobId: string): Promise<Scene[]> {
+    const records = await pb.collection('scenes').getFullList({
+      filter: `job = "${jobId}"`,
       sort: 'scene_order',
     });
     return records as Scene[];

@@ -9,15 +9,98 @@ import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import fsSync from 'fs';
 
-// Prefer environment variable for FFmpeg path
-if (process.env.FFMPEG_PATH) {
-  ffmpeg.setFfmpegPath(path.resolve(process.env.FFMPEG_PATH));
-  console.log('[VideoAssembly] Using FFmpeg from env:', process.env.FFMPEG_PATH);
-} else if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic as unknown as string);
-  console.log('[VideoAssembly] Using FFmpeg from ffmpeg-static');
+// Ensure ffmpeg binary path is set robustly (avoid Next bundling .next vendor-chunks)
+function resolveFfmpegBinary(): string | null {
+  try {
+    const isWin = process.platform === 'win32';
+    const ffmpegFile = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+
+    const candidates: string[] = [];
+
+    // 1) Explicit env var wins
+    if (process.env.FFMPEG_PATH) {
+      candidates.push(path.resolve(process.env.FFMPEG_PATH));
+    }
+
+    // 2) Direct node_modules path - ffmpeg-static places binary directly in root
+    candidates.push(path.resolve(process.cwd(), 'node_modules', 'ffmpeg-static', ffmpegFile));
+
+    // 3) Walk up from __dirname to locate node_modules/ffmpeg-static/ffmpeg(.exe)
+    try {
+      let dir = __dirname;
+      for (let i = 0; i < 6; i++) {
+        const p = path.resolve(dir, 'node_modules', 'ffmpeg-static', ffmpegFile);
+        candidates.push(p);
+        const parent = path.resolve(dir, '..');
+        if (parent === dir) break;
+        dir = parent;
+      }
+    } catch {}
+
+    // 4) Value exported by ffmpeg-static import (filter if in .next bundled path)
+    if (ffmpegStatic && typeof ffmpegStatic === 'string') {
+      candidates.push(ffmpegStatic);
+    }
+
+    // 5) Common install locations (very last resorts)
+    if (!isWin) {
+      candidates.push('/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg');
+    }
+
+    // Filter out any paths inside .next where the binary won't exist
+    const filtered = candidates.filter(Boolean).filter(p => !p.includes(`${path.sep}.next${path.sep}`));
+
+    console.log('[VideoAssembly] FFmpeg candidates (filtered):', filtered);
+
+    for (const c of filtered) {
+      try {
+        if (fsSync.existsSync(c)) {
+          console.log('[VideoAssembly] FFmpeg binary found at:', c);
+          return c;
+        }
+      } catch {}
+    }
+
+    // As an absolute last resort, allow .next path only if it actually exists
+    console.log('[VideoAssembly] No filtered FFmpeg found, trying all candidates:', candidates);
+    for (const c of candidates) {
+      try {
+        if (fsSync.existsSync(c)) {
+          console.log('[VideoAssembly] FFmpeg binary found (fallback) at:', c);
+          return c;
+        }
+      } catch {}
+    }
+
+    console.error('[VideoAssembly] No FFmpeg binary found in any candidate path');
+    return null;
+  } catch (e) {
+    console.error('[VideoAssembly] Error in resolveFfmpegBinary:', e);
+    return null;
+  }
+}
+
+function ensureFfmpegConfigured() {
+  try {
+    const sel = resolveFfmpegBinary();
+    if (sel) {
+      ffmpeg.setFfmpegPath(sel);
+      console.log('[VideoAssembly] Using ffmpeg from:', sel);
+    }
+  } catch (e) {
+    // noop
+  }
+}
+
+// Set up ffmpeg binary early
+const selectedFfmpeg = resolveFfmpegBinary();
+if (selectedFfmpeg) {
+  ffmpeg.setFfmpegPath(selectedFfmpeg);
+  console.log('[VideoAssembly] Using ffmpeg from:', selectedFfmpeg);
 } else {
-  console.error('[VideoAssembly] No FFmpeg binary found!');
+  // Fallback to what ffmpeg-static provided (may fail if bundled path is invalid)
+  ffmpeg.setFfmpegPath((ffmpegStatic as unknown as string) || 'ffmpeg');
+  console.warn('[VideoAssembly] Failed to resolve ffmpeg path robustly; falling back');
 }
 
 try {
@@ -127,6 +210,11 @@ try {
   console.error('[VideoAssembly] Error setting ffprobe path:', error?.message || error);
 }
 
+export interface TTSOptions {
+  ttsEngine: 'kokoro' | 'elevenlabs';
+  voice: string;
+}
+
 export interface VideoGenerationResult {
   success: boolean;
   videoUrl?: string;
@@ -180,102 +268,58 @@ async function generateSceneAudio(narration: string, voiceId: string = 'JBFqnCBs
 }
 
 /**
- * Create a video segment from an image with zoom animation and audio
- */
-async function createVideoSegment(imagePath: string, audioPath: string, duration: number, outputPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const FPS = 25;
-    const WIDTH = 1920;
-    const HEIGHT = 1080;
-    const totalDuration = duration + 1; // narration + 1 sec silence
-    const totalFrames = Math.round(totalDuration * FPS);
-    const startZoom = 1.0;
-    const endZoom = 1.2;
-
-    // Smooth zoom using time-based increment and full coverage scaling
-    const zoomFilter = [
-      // Scale to fully cover the frame while keeping aspect ratio
-      `scale=iw*max(${WIDTH}/iw\\,${HEIGHT}/ih):ih*max(${WIDTH}/iw\\,${HEIGHT}/ih)`,
-      // Crop to exactly WIDTHxHEIGHT so no borders remain
-      `crop=${WIDTH}:${HEIGHT}`,
-      // Smooth zoom over time
-      `zoompan=z='${startZoom} + (${endZoom}-${startZoom})*on/${totalFrames}':d=${totalFrames}:s=${WIDTH}x${HEIGHT}:fps=${FPS}`
-    ].join(',');
-
-    ffmpeg()
-      .input(imagePath)
-      .inputOptions(['-loop', '1'])
-      .input(audioPath)
-      .input('anullsrc=r=48000:cl=stereo')
-      .inputFormat('lavfi')
-      .inputOptions(['-t', '1'])
-      .complexFilter([
-        `[0:v]${zoomFilter}[v]`,
-        `[1:a][2:a]concat=n=2:v=0:a=1[a]`
-      ])
-      .map('[v]')
-      .map('[a]')
-      .outputOptions([
-        '-c:v', 'libx264',
-        '-pix_fmt', 'yuv420p',
-        `-r`, `${FPS}`,
-        '-c:a', 'aac',
-        '-ar', '48000',
-        '-ac', '2',
-        '-b:a', '192k',
-        `-t`, `${totalDuration}`
-      ])
-      .output(outputPath)
-      .on('end', () => {
-        console.log(`[VideoAssembly] Segment created: ${outputPath}`);
-        resolve();
-      })
-      .on('error', (err) => {
-        console.error(`[VideoAssembly] Error creating segment: ${err.message}`);
-        reject(err);
-      })
-      .run();
-  });
-}
-
-/**
- * Concatenate video segments into final video
- */
-async function concatenateSegments(segmentPaths: string[], outputPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tempDir = path.join(process.cwd(), 'temp');
-    const concatListPath = path.join(tempDir, 'concat_list.txt');
-    
-    // Ensure temp directory exists
-    if (!require('fs').existsSync(tempDir)) {
-      require('fs').mkdirSync(tempDir, { recursive: true });
-    }
-    
-    // Create concat list file
-    const concatList = segmentPaths.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n');
-    require('fs').writeFileSync(concatListPath, concatList);
-    
-    ffmpeg()
-      .input(concatListPath)
-      .inputOptions(['-f', 'concat', '-safe', '0'])
-      .outputOptions(['-c', 'copy'])
-      .output(outputPath)
-      .on('end', () => {
-        console.log(`[VideoAssembly] Final video created: ${outputPath}`);
-        resolve();
-      })
-      .on('error', (err) => {
-        console.error(`[VideoAssembly] Error concatenating segments: ${err.message}`);
-        reject(err);
-      })
-      .run();
-  });
-}
-
-/**
  * Generate audio for a single scene with custom naming
  */
-async function generateSceneAudioWithCustomName(narration: string, videoId: string, sceneIndex: number, voiceId: string = 'JBFqnCBsd6RMkjVDRZzb'): Promise<{ success: boolean; url?: string; error?: string; duration?: number }> {
+export async function generateSceneAudioWithCustomName(narration: string, videoId: string, sceneIndex: number, ttsOptions?: TTSOptions): Promise<{ success: boolean; url?: string; error?: string; duration?: number }> {
+  const engine = ttsOptions?.ttsEngine || 'elevenlabs';
+  const voice = ttsOptions?.voice || (engine === 'kokoro' ? 'af_heart' : 'JBFqnCBsd6RMkjVDRZzb');
+  
+  if (engine === 'kokoro') {
+    return await generateKokoroAudio(narration, videoId, sceneIndex, voice);
+  } else {
+    return await generateElevenLabsAudio(narration, videoId, sceneIndex, voice);
+  }
+}
+
+async function generateKokoroAudio(narration: string, videoId: string, sceneIndex: number, voice: string): Promise<{ success: boolean; url?: string; error?: string; duration?: number }> {
+  try {
+    const kokoroUrl = 'http://localhost:8880/v1/audio/speech';
+    
+    const res = await fetch(kokoroUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'kokoro',
+        input: narration,
+        voice: voice,
+        response_format: 'mp3',
+        speed: 1.0,
+        lang_code: 'a' // American English
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      return { success: false, error: `Kokoro TTS API failed with status ${res.status}: ${errorText}` };
+    }
+
+    const arrayBuf = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
+    const saved = await saveBufferWithCustomName(buffer, 'audio', 'mp3', videoId, sceneIndex);
+    
+    // Estimate duration based on text length (rough approximation: ~150 words per minute)
+    const wordCount = narration.split(' ').length;
+    const estimatedDuration = Math.max(2, Math.ceil((wordCount / 150) * 60)); // Minimum 2 seconds
+    
+    return { success: true, url: saved.url, duration: estimatedDuration };
+  } catch (error: any) {
+    return { success: false, error: error.message || 'Unknown Kokoro audio generation error' };
+  }
+}
+
+async function generateElevenLabsAudio(narration: string, videoId: string, sceneIndex: number, voiceId: string): Promise<{ success: boolean; url?: string; error?: string; duration?: number }> {
   try {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
@@ -299,7 +343,7 @@ async function generateSceneAudioWithCustomName(narration: string, videoId: stri
     });
 
     if (!res.ok) {
-      return { success: false, error: `TTS API failed with status ${res.status}` };
+      return { success: false, error: `ElevenLabs TTS API failed with status ${res.status}` };
     }
 
     const arrayBuf = await res.arrayBuffer();
@@ -312,7 +356,7 @@ async function generateSceneAudioWithCustomName(narration: string, videoId: stri
     
     return { success: true, url: saved.url, duration: estimatedDuration };
   } catch (error: any) {
-    return { success: false, error: error.message || 'Unknown audio generation error' };
+    return { success: false, error: error.message || 'Unknown ElevenLabs audio generation error' };
   }
 }
 
@@ -335,7 +379,7 @@ export function getAudioDuration(audioPath: string): Promise<number> {
 /**
  * Generate multiple audio files for scenes with custom naming
  */
-async function generateScenesAudio(scenes: Scene[], videoId: string): Promise<{ audioUrls: string[]; errors: string[]; audioDurations: number[] }> {
+async function generateScenesAudio(scenes: Scene[], videoId: string, ttsOptions?: TTSOptions): Promise<{ audioUrls: string[]; errors: string[]; audioDurations: number[] }> {
   const audioUrls: string[] = [];
   const errors: string[] = [];
   const audioDurations: number[] = [];
@@ -346,7 +390,7 @@ async function generateScenesAudio(scenes: Scene[], videoId: string): Promise<{ 
     const scene = scenes[i];
     console.log(`[VideoAssembly] Generating audio for scene ${i}: "${scene.narration.slice(0, 50)}..."`);
     
-    const result = await generateSceneAudioWithCustomName(scene.narration, videoId, i);
+    const result = await generateSceneAudioWithCustomName(scene.narration, videoId, i, ttsOptions);
     
     if (result.success && result.url) {
       audioUrls.push(result.url);
@@ -497,7 +541,7 @@ async function assembleVideo(imageUrls: string[], audioUrls: string[], audioDura
 /**
  * Main function to generate a complete video from story input
  */
-export async function generateVideo(inputText: string, visualStyle: string): Promise<VideoGenerationResult> {
+export async function generateVideo(inputText: string, visualStyle: string, ttsOptions?: TTSOptions): Promise<VideoGenerationResult> {
   const errors: string[] = [];
   const videoId = uuid(); // Generate unique video ID
   
@@ -534,7 +578,7 @@ export async function generateVideo(inputText: string, visualStyle: string): Pro
     
     // Step 4: Generate audio for all scenes with video ID and scene order
     console.log('[VideoAssembly] Step 4: Generating audio for scenes...');
-    const { audioUrls, errors: audioErrors, audioDurations } = await generateScenesAudio(scenes, videoId);
+    const { audioUrls, errors: audioErrors, audioDurations } = await generateScenesAudio(scenes, videoId, ttsOptions);
     errors.push(...audioErrors);
     
     // Step 5: Assemble final video with zoom animations
@@ -565,4 +609,109 @@ export async function generateVideo(inputText: string, visualStyle: string): Pro
       details: { scenes: [], imageUrls: [], audioUrls: [], errors: [error.message] }
     };
   }
+}
+
+/**
+ * Create a single video segment from image and audio
+ */
+export async function createVideoSegment(imagePath: string, audioPath: string, duration: number, outputPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    ensureFfmpegConfigured();
+    const FPS = 25;
+    const WIDTH = 1920;
+    const HEIGHT = 1080;
+    const totalDuration = duration + 1; // narration + 1 sec silence
+    const totalFrames = Math.round(totalDuration * FPS);
+    const startZoom = 1.0;
+    const endZoom = 1.2;
+
+    const zoomFilter = [
+      `scale=iw*max(${WIDTH}/iw\\,${HEIGHT}/ih):ih*max(${WIDTH}/iw\\,${HEIGHT}/ih)`,
+      `crop=${WIDTH}:${HEIGHT}`,
+      `zoompan=z='${startZoom} + (${endZoom}-${startZoom})*on/${totalFrames}':d=${totalFrames}:s=${WIDTH}x${HEIGHT}:fps=${FPS}`
+    ].join(',');
+
+    ffmpeg()
+      .input(imagePath)
+      .inputOptions(['-loop', '1'])
+      .input(audioPath)
+      .input('anullsrc=r=48000:cl=stereo')
+      .inputFormat('lavfi')
+      .inputOptions(['-t', '1'])
+      .complexFilter([
+        `[0:v]${zoomFilter}[v]`,
+        `[1:a][2:a]concat=n=2:v=0:a=1[a]`
+      ])
+      .map('[v]')
+      .map('[a]')
+      .outputOptions([
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        `-r`, `${FPS}`,
+        '-c:a', 'aac',
+        '-ar', '48000',
+        '-ac', '2',
+        '-b:a', '192k',
+        `-t`, `${totalDuration}`
+      ])
+      .output(outputPath)
+      .on('start', (cmd) => console.log(`[VideoAssembly] FFmpeg segment command: ${cmd}`))
+      .on('progress', (progress) => console.log(`[VideoAssembly] Segment progress: ${Math.round(progress.percent || 0)}%`))
+      .on('end', () => {
+        console.log(`[VideoAssembly] Segment created successfully: ${outputPath}`);
+        resolve();
+      })
+      .on('error', (error) => {
+        console.error(`[VideoAssembly] Segment creation failed:`, error);
+        reject(error);
+      })
+      .run();
+  });
+}
+
+/**
+ * Concatenate multiple video segments into a final video
+ */
+export async function concatenateSegments(segmentPaths: string[], outputPath: string): Promise<void> {
+  return new Promise(async (resolve, reject) => {
+    console.log(`[VideoAssembly] Concatenating ${segmentPaths.length} segments into: ${outputPath}`);
+    ensureFfmpegConfigured();
+    try {
+      const tempDir = path.dirname(segmentPaths[0]);
+      const concatListPath = path.join(tempDir, 'concat_list.txt');
+      const concatList = segmentPaths.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n');
+      await fs.writeFile(concatListPath, concatList);
+      
+      ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f concat', '-safe 0'])
+        .outputOptions([
+          '-c copy',
+          '-avoid_negative_ts make_zero'
+        ])
+        .output(outputPath)
+        .on('start', (commandLine) => {
+          console.log(`[VideoAssembly] Concat FFmpeg command: ${commandLine}`);
+        })
+        .on('progress', (progress) => {
+          console.log(`[VideoAssembly] Concat progress: ${Math.round(progress.percent || 0)}%`);
+        })
+        .on('end', async () => {
+          console.log(`[VideoAssembly] Video concatenation completed: ${outputPath}`);
+          try {
+            await fs.unlink(concatListPath);
+          } catch (err) {
+            console.warn(`Could not delete concat list file:`, err);
+          }
+          resolve();
+        })
+        .on('error', (error) => {
+          console.error(`[VideoAssembly] Video concatenation failed:`, error);
+          reject(error);
+        })
+        .run();
+    } catch (error) {
+      reject(error);
+    }
+  });
 }

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import PageTemplate from '@/components/PageTemplate';
 import { useAuth } from '@/contexts/AuthContext';
 import pb from '@/lib/pocketbase';
+import SceneSlideshow from '@/components/SceneSlideshow';
 
 type Quality = 'LOW' | 'HIGH' | 'MAX';
 
@@ -15,6 +16,28 @@ interface GenerationProgress {
   progress: number;
   message: string;
   generatedImages?: string[];
+}
+
+interface GenerationJob {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress?: {
+    step: string;
+    message: string;
+  };
+  video_url?: string;
+  error?: string;
+}
+
+interface Scene {
+  id: string;
+  scene_number: number;
+  description: string;
+  image_url?: string;
+  audio_url?: string;
+  video_url?: string;
+  status: 'pending' | 'generating' | 'completed' | 'error';
+  error?: string;
 }
 
 const stylePresets = [
@@ -70,10 +93,48 @@ export default function GeneratePage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isAssembling, setIsAssembling] = useState(false);
+  const [regeneratingSceneId, setRegeneratingSceneId] = useState<string | undefined>();
+  const [useSceneGeneration, setUseSceneGeneration] = useState(true);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
+  const [ttsEngine, setTtsEngine] = useState<'kokoro' | 'elevenlabs'>('kokoro');
+  const [selectedVoice, setSelectedVoice] = useState('af_heart');
+  const [availableVoices, setAvailableVoices] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const cost = useMemo(() => quality === 'LOW' ? 0 : quality === 'HIGH' ? 10 : 50, [quality]);
+
+  // Fetch available voices when TTS engine changes
+  useEffect(() => {
+    const fetchVoices = async () => {
+      try {
+        if (ttsEngine === 'kokoro') {
+          const response = await fetch('http://localhost:8880/v1/audio/voices');
+          if (response.ok) {
+            const data = await response.json();
+            setAvailableVoices(data.voices || []);
+            // Set default voice if current selection is not available
+            if (!data.voices?.includes(selectedVoice)) {
+              setSelectedVoice(data.voices?.[0] || 'af_heart');
+            }
+          }
+        } else {
+          // For Eleven Labs, we'll set some common voices
+          // This would be replaced with actual Eleven Labs API call
+          setAvailableVoices(['Rachel', 'Drew', 'Clyde', 'Paul', 'Domi', 'Dave', 'Fin', 'Sarah']);
+          setSelectedVoice('Rachel');
+        }
+      } catch (error) {
+        console.error('Failed to fetch voices:', error);
+        // Fallback voices
+        setAvailableVoices(['af_heart', 'af_bella', 'am_adam', 'am_michael']);
+      }
+    };
+
+    fetchVoices();
+  }, [ttsEngine]);
 
   async function handleUploadPdf(selected: File) {
     const form = new FormData();
@@ -97,19 +158,32 @@ export default function GeneratePage() {
       return;
     }
 
+    if (!story.trim()) {
+      setError('Please enter a story');
+      return;
+    }
+
     setError(null);
     setLoading(true);
     setVideoUrl(null);
     setGenerationProgress({ step: 'extracting', progress: 0, message: 'Starting generation...', generatedImages: [] });
+    setScenes([]);
     
     try {
-      const res = await fetch('/api/generate', {
+      const endpoint = useSceneGeneration ? '/api/generate-scenes' : '/api/generate';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${pb.authStore.token}`
         },
-        body: JSON.stringify({ story, style, quality })
+        body: JSON.stringify({ 
+          story, 
+          style, 
+          quality,
+          ttsEngine,
+          voice: selectedVoice
+        })
       });
       
       if (!res.ok) {
@@ -126,12 +200,80 @@ export default function GeneratePage() {
     }
   }
 
+  const handleRegenerateScene = async (sceneId: string) => {
+    if (!user || !jobId) return;
+
+    setIsRegenerating(true);
+    setRegeneratingSceneId(sceneId);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/regenerate-scene', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${pb.authStore.token}`
+        },
+        body: JSON.stringify({
+          jobId,
+          sceneId,
+          ttsEngine,
+          voice: selectedVoice
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to regenerate scene');
+      }
+
+      // Continue polling for updates
+    } catch (error: any) {
+      console.error('Scene regeneration failed:', error);
+      setError(error.message || 'Failed to regenerate scene');
+      setIsRegenerating(false);
+      setRegeneratingSceneId(undefined);
+    }
+  };
+
+  const handleAssembleVideo = async () => {
+    if (!user || !jobId) return;
+
+    setIsAssembling(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/assemble-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${pb.authStore.token}`
+        },
+        body: JSON.stringify({
+          jobId
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to assemble video');
+      }
+
+      // Continue polling for updates
+    } catch (error: any) {
+      console.error('Video assembly failed:', error);
+      setError(error.message || 'Failed to assemble video');
+      setIsAssembling(false);
+    }
+  };
+
   useEffect(() => {
     if (!jobId || !user) return;
     
     const t = setInterval(async () => {
       try {
-        const res = await fetch(`/api/generate?id=${jobId}`, {
+        const endpoint = useSceneGeneration ? `/api/generate-scenes?id=${jobId}` : `/api/generate?id=${jobId}`;
+        const res = await fetch(endpoint, {
           headers: {
             'Authorization': `Bearer ${pb.authStore.token}`
           }
@@ -145,9 +287,28 @@ export default function GeneratePage() {
           setGenerationProgress(data.progress);
         }
 
+        // Update scenes if using scene generation
+        if (useSceneGeneration && data.scenes) {
+          setScenes(data.scenes);
+        }
+
+        // Update regeneration state
+        if (data.status === 'processing' && !isRegenerating) {
+          setIsRegenerating(false);
+          setRegeneratingSceneId(undefined);
+        }
+
+        // Update assembly state
+        if (data.status === 'processing' && !isAssembling) {
+          setIsAssembling(false);
+        }
+
         if (data.status === 'completed') {
           setVideoUrl(data.url);
           setLoading(false);
+          setIsRegenerating(false);
+          setIsAssembling(false);
+          setRegeneratingSceneId(undefined);
           setGenerationProgress({ 
             step: 'done', 
             progress: 100, 
@@ -160,6 +321,9 @@ export default function GeneratePage() {
         if (data.status === 'failed') {
           setError(data.error || 'Generation failed');
           setLoading(false);
+          setIsRegenerating(false);
+          setIsAssembling(false);
+          setRegeneratingSceneId(undefined);
           setGenerationProgress(null);
           clearInterval(t);
         }
@@ -176,68 +340,165 @@ export default function GeneratePage() {
       <div className="min-h-[calc(100vh-8rem)] flex flex-col">
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start flex-1">
           {/* Left controls */}
-          <div className="card space-y-3 animate-in fade-in slide-in-from-left-4 duration-500">
-            <div className="flex items-center gap-2 text-sm">
-              <button className={`btn text-xs ${tab === 'TEXT' ? 'bg-white/15 border border-white/20' : ''}`} onClick={() => setTab('TEXT')}>Story</button>
-              <button className={`btn text-xs ${tab === 'PDF' ? 'bg-white/15 border border-white/20' : ''}`} onClick={() => setTab('PDF')}>PDF</button>
-              <button className={`btn text-xs ${tab === 'YOUTUBE' ? 'bg-white/15 border border-white/20' : ''}`} onClick={() => setTab('YOUTUBE')}>YouTube</button>
+          <div className="space-y-4">
+            {/* Input Selection */}
+            <div className="card space-y-3 animate-in fade-in slide-in-from-left-4 duration-500">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-sm font-medium text-white">Input Source</h3>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <button className={`btn text-xs ${tab === 'TEXT' ? 'bg-white/15 border border-white/20' : ''}`} onClick={() => setTab('TEXT')}>Story</button>
+                <button className={`btn text-xs ${tab === 'PDF' ? 'bg-white/15 border border-white/20' : ''}`} onClick={() => setTab('PDF')}>PDF</button>
+                <button className={`btn text-xs ${tab === 'YOUTUBE' ? 'bg-white/15 border border-white/20' : ''}`} onClick={() => setTab('YOUTUBE')}>YouTube</button>
+              </div>
+
+              {tab === 'TEXT' && (
+                <textarea className="input h-48 resize-none text-sm" placeholder="Write or paste your story..." value={story} onChange={(e) => setStory(e.target.value)} />
+              )}
+              {tab === 'PDF' && (
+                <div>
+                  <input type="file" accept=".pdf" className="hidden" ref={inputRef} onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) { setFile(f); handleUploadPdf(f).catch(() => setError('Could not read PDF')); }
+                  }} />
+                  <div
+                    className="border-2 border-dashed border-white/20 rounded-xl p-6 text-center cursor-pointer hover:border-white/30 transition-colors"
+                    onClick={() => inputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files?.[0];
+                      if (f && f.type === 'application/pdf') {
+                        setFile(f);
+                        handleUploadPdf(f).catch(() => setError('Could not read PDF'));
+                      }
+                    }}
+                  >
+                    <Upload className="h-6 w-6 mx-auto mb-2 text-white/50" />
+                    <p className="text-white/70 text-sm mb-1">Drop PDF or click to browse</p>
+                    <p className="text-xs text-white/50">PDF files only</p>
+                    {file && <p className="text-xs text-emerald-400 mt-2 font-medium">{file.name}</p>}
+                  </div>
+                </div>
+              )}
+              {tab === 'YOUTUBE' && (
+                <div className="space-y-2">
+                  <input className="input text-sm" placeholder="YouTube URL..." value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} />
+                  <button className="btn-primary w-full inline-flex items-center justify-center gap-2 text-sm" onClick={() => handleExtractYoutube(youtubeUrl).catch(() => setError('Could not extract from YouTube'))} disabled={!youtubeUrl.trim()}>
+                    <Youtube className="h-4 w-4" /> Extract
+                  </button>
+                </div>
+              )}
             </div>
 
-            {tab === 'TEXT' && (
-              <textarea className="input h-48 resize-none text-sm" placeholder="Write or paste your story..." value={story} onChange={(e) => setStory(e.target.value)} />
-            )}
-            {tab === 'PDF' && (
+            {/* Audio Settings */}
+            <div className="card space-y-3 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
+              <div className="flex items-center gap-2 mb-2">
+                <Music className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-sm font-medium text-white">Audio Settings</h3>
+              </div>
+              
               <div>
-                <input type="file" accept=".pdf" className="hidden" ref={inputRef} onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) { setFile(f); handleUploadPdf(f).catch(() => setError('Could not read PDF')); }
-                }} />
-                <div
-                  className="border-2 border-dashed border-white/20 rounded-xl p-6 text-center cursor-pointer hover:border-white/30 transition-colors"
-                  onClick={() => inputRef.current?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const f = e.dataTransfer.files?.[0];
-                    if (f && f.type === 'application/pdf') {
-                      setFile(f);
-                      handleUploadPdf(f).catch(() => setError('Could not read PDF'));
-                    }
-                  }}
-                >
-                  <Upload className="h-6 w-6 mx-auto mb-2 text-white/50" />
-                  <p className="text-white/70 text-sm mb-1">Drop PDF or click to browse</p>
-                  <p className="text-xs text-white/50">PDF files only</p>
-                  {file && <p className="text-xs text-emerald-400 mt-2 font-medium">{file.name}</p>}
+                <label className="text-sm text-white/70 mb-2 block">Generation Mode</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    className={`btn text-xs transition-all duration-200 ${useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
+                    onClick={() => setUseSceneGeneration(true)}
+                  >
+                    🎬 Scene-by-Scene
+                  </button>
+                  <button 
+                    className={`btn text-xs transition-all duration-200 ${!useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
+                    onClick={() => setUseSceneGeneration(false)}
+                  >
+                    ⚡ Batch Generation
+                  </button>
+                </div>
+                <p className="text-xs text-white/60 mt-1">
+                  {useSceneGeneration ? 'Generate and preview each scene individually' : 'Generate entire video at once'}
+                </p>
+              </div>
+              
+              <div>
+                <label className="text-sm text-white/70 mb-2 block">Text-to-Speech Engine</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    className={`btn text-xs transition-all duration-200 ${ttsEngine === 'kokoro' ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
+                    onClick={() => setTtsEngine('kokoro')}
+                  >
+                    🏠 Local Kokoro
+                  </button>
+                  <button 
+                    className={`btn text-xs transition-all duration-200 ${ttsEngine === 'elevenlabs' ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
+                    onClick={() => setTtsEngine('elevenlabs')}
+                  >
+                    ☁️ Eleven Labs
+                  </button>
                 </div>
               </div>
-            )}
-            {tab === 'YOUTUBE' && (
-              <div className="space-y-2">
-                <input className="input text-sm" placeholder="YouTube URL..." value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} />
-                <button className="btn-primary w-full inline-flex items-center justify-center gap-2 text-sm" onClick={() => handleExtractYoutube(youtubeUrl).catch(() => setError('Could not extract from YouTube'))} disabled={!youtubeUrl.trim()}>
-                  <Youtube className="h-4 w-4" /> Extract
-                </button>
+
+              <div>
+                <label className="text-sm text-white/70 mb-2 block">Voice Selection</label>
+                <div className="relative">
+                  <select 
+                    className="input text-sm w-full appearance-none bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 focus:bg-white/15 transition-all duration-200 cursor-pointer"
+                    value={selectedVoice}
+                    onChange={(e) => setSelectedVoice(e.target.value)}
+                  >
+                    {availableVoices.map(voice => (
+                      <option key={voice} value={voice} className="bg-gray-800 text-white">
+                        {voice.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <svg className="w-4 h-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className={`w-2 h-2 rounded-full ${ttsEngine === 'kokoro' ? 'bg-green-400' : 'bg-blue-400'}`}></div>
+                  <p className="text-xs text-white/60">
+                    {ttsEngine === 'kokoro' ? 'Local TTS - No additional cost' : 'Cloud TTS - May incur additional charges'}
+                  </p>
+                </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Middle preview container */}
           <div className="lg:col-span-1 order-first lg:order-none">
-            <div className="card h-[400px] flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {loading && generationProgress ? (
-                <GenerationProgressView progress={generationProgress} />
-              ) : videoUrl ? (
-                <video controls className="w-full h-full object-cover rounded-xl border border-white/15">
-                  <source src={videoUrl} type="video/mp4" />
-                </video>
-              ) : (
-                <div className="text-center text-white/70">
-                  <Tv2 className="mx-auto h-10 w-10 mb-3" />
-                  <p className="text-sm">Your video will appear here</p>
-                </div>
-              )}
-            </div>
+            {useSceneGeneration && scenes.length > 0 ? (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <SceneSlideshow
+                  jobId={jobId || ''}
+                  scenes={scenes}
+                  onRegenerateScene={handleRegenerateScene}
+                  onAssembleVideo={handleAssembleVideo}
+                  isRegenerating={isRegenerating}
+                  isAssembling={isAssembling}
+                  regeneratingSceneId={regeneratingSceneId}
+                  progressData={generationProgress}
+                />
+              </div>
+            ) : (
+              <div className="card h-[400px] flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {loading && generationProgress ? (
+                  <GenerationProgressView progress={generationProgress} />
+                ) : videoUrl ? (
+                  <video controls className="w-full h-full object-cover rounded-xl border border-white/15">
+                    <source src={videoUrl} type="video/mp4" />
+                  </video>
+                ) : (
+                  <div className="text-center text-white/70">
+                    <Tv2 className="mx-auto h-10 w-10 mb-3" />
+                    <p className="text-sm">Your video will appear here</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right controls */}

@@ -1,5 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
+import WebSocket from 'ws';
+import { v4 as uuid } from 'uuid';
 
 // ComfyUI server configuration
 const COMFY_SERVER = process.env.COMFYUI_SERVER || 'http://127.0.0.1:8188';
@@ -163,6 +165,40 @@ export async function generateImage(prompt: string, seed?: number): Promise<Imag
       images: [], 
       error: error instanceof Error ? error.message : 'Unknown error occurred' 
     };
+  }
+}
+
+/**
+ * Generate a single image for a scene
+ */
+export async function generateSceneImage(imageDescription: string): Promise<{ success: boolean; imageUrl?: string; error?: string }> {
+  try {
+    console.log(`[ComfyUI] Generating single scene image: "${imageDescription.slice(0, 60)}..."`); 
+    
+    const result = await generateImage(imageDescription);
+    
+    if (result.success && result.images.length > 0) {
+      // Save the image and return URL
+      const imageBuffer = result.images[0];
+      const imageId = uuid();
+      const imagePath = path.join(process.cwd(), 'public', 'assets', 'images', `${imageId}.png`);
+      
+      // Ensure images directory exists
+      await fs.mkdir(path.dirname(imagePath), { recursive: true });
+      
+      // Save image to file
+      await fs.writeFile(imagePath, imageBuffer);
+      
+      const imageUrl = `/assets/images/${imageId}.png`;
+      console.log(`[ComfyUI] Scene image saved: ${imageUrl}`);
+      
+      return { success: true, imageUrl };
+    } else {
+      return { success: false, error: result.error || 'Failed to generate image' };
+    }
+  } catch (error: any) {
+    console.error('[ComfyUI] Scene image generation failed:', error);
+    return { success: false, error: error.message || 'Image generation failed' };
   }
 }
 

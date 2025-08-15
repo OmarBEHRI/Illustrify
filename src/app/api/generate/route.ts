@@ -21,8 +21,12 @@ export async function POST(req: Request) {
 
     const user = pb.authStore.model;
     
-    const { story, style, quality } = await req.json();
+    const { story, style, quality, ttsEngine, voice } = await req.json();
     if (!story || !quality) return NextResponse.json({ error: 'Bad request' }, { status: 400 });
+    
+    // Default TTS settings if not provided
+    const selectedTtsEngine = ttsEngine || 'kokoro';
+    const selectedVoice = voice || 'af_heart';
     
     const q = (String(quality).toUpperCase() as 'LOW'|'HIGH'|'MAX');
     const cost = qualityCost(q);
@@ -41,7 +45,9 @@ export async function POST(req: Request) {
       story_input: story, 
       visual_style: style, 
       quality: q,
-      input_type: 'text'
+      input_type: 'text',
+      tts_engine: selectedTtsEngine,
+      voice: selectedVoice
     });
 
     // Start video generation pipeline
@@ -59,7 +65,10 @@ export async function POST(req: Request) {
           progress_data: { step: 'scenes', progress: 25, message: 'Creating scenes...' }
         });
         
-        const result = await generateVideo(story, style);
+        const result = await generateVideo(story, style, {
+          ttsEngine: selectedTtsEngine,
+          voice: selectedVoice
+        });
         
         if (result.success && result.videoUrl) {
           const videoTitle = (story as string).slice(0, 80) + '...';
