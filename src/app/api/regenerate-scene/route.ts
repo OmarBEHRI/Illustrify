@@ -58,8 +58,8 @@ export async function POST(req: Request) {
         
         // Update job progress
         await pbHelpers.updateJob(jobId, {
-          progress_data: {
-            ...job.progress_data,
+          progress: {
+        ...job.progress,
             message: `Regenerating scene ${scene.scene_order + 1}...`,
             regeneratingScene: scene.scene_order
           }
@@ -118,8 +118,8 @@ export async function POST(req: Request) {
         }));
         
         await pbHelpers.updateJob(jobId, {
-          progress_data: {
-            ...job.progress_data,
+          progress: {
+        ...job.progress,
             message: `Scene ${scene.scene_order + 1} regenerated successfully`,
             generatedScenes: scenesWithVideoUrls,
             regeneratingScene: null
@@ -131,8 +131,8 @@ export async function POST(req: Request) {
       } catch (error: any) {
         console.error(`[Regenerate Scene API] Error regenerating scene ${sceneId}:`, error);
         await pbHelpers.updateJob(jobId, {
-          progress_data: {
-            ...job.progress_data,
+          progress: {
+        ...job.progress,
             message: `Failed to regenerate scene ${scene.scene_order + 1}: ${error.message}`,
             regeneratingScene: null
           }

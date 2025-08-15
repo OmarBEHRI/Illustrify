@@ -62,22 +62,29 @@ export default function SceneSlideshow({
   const getStatusBadge = (scene: Scene, progressData?: any) => {
     // Check if this scene is currently being generated based on progress data
     const isCurrentlyGenerating = progressData && 
-      progressData.current_scene === scene.scene_number && 
-      progressData.step === 'generating_scenes';
+      progressData.scene_progress && 
+      progressData.scene_progress.current === scene.scene_number && 
+      (progressData.step === 'generating_scenes' || progressData.step === 'scene_completed');
     
     if (isCurrentlyGenerating) {
       const subStepText: Record<string, string> = {
-        'starting': 'Starting...',
+        'starting': 'Starting Scene...',
         'generating_image': 'Creating Image...',
         'generating_audio': 'Creating Audio...',
         'creating_video': 'Assembling Video...',
-        'completed': 'Finalizing...'
+        'completed': 'Scene Complete!'
       };
-      const displayText = subStepText[progressData.sub_step] || 'Processing...';
+      const displayText = subStepText[progressData.scene_progress.status] || 
+                         subStepText[progressData.sub_step] || 'Processing...';
+      
+      // Show different colors based on status
+      const isCompleted = progressData.scene_progress.status === 'completed' || progressData.sub_step === 'completed';
+      const bgColor = isCompleted ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800';
       
       return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-            <Loader2 className="h-3 w-3 animate-spin" />
+          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${bgColor}`}>
+            {!isCompleted && <Loader2 className="h-3 w-3 animate-spin" />}
+            {isCompleted && <Play className="h-3 w-3" />}
             {displayText}
           </span>
         );
@@ -199,12 +206,10 @@ export default function SceneSlideshow({
   // Slideshow view
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-white">Scene Generation Progress</h3>
-        <div className="flex items-center gap-3">
-          <div className="text-sm text-gray-400">
-            {completedScenes.length} of {scenes.length} scenes completed
-          </div>
+      {/* Overall Progress Header */}
+      <div className="bg-white/5 border border-white/15 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-white">Scene Generation Progress</h3>
           <button
             onClick={() => setShowAllScenes(true)}
             className="px-3 py-1 text-sm bg-white/10 text-white border border-white/20 rounded-md hover:bg-white/15 transition-colors"
@@ -212,6 +217,46 @@ export default function SceneSlideshow({
             View All
           </button>
         </div>
+        
+        {/* Progress Bar */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-sm text-white/70 mb-1">
+            <span>Scenes: {completedScenes.length} of {scenes.length} completed</span>
+            <span>{Math.round((completedScenes.length / scenes.length) * 100)}%</span>
+          </div>
+          <div className="w-full bg-white/10 rounded-full h-2">
+            <div 
+              className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${(completedScenes.length / scenes.length) * 100}%` }}
+            />
+          </div>
+        </div>
+        
+        {/* Current Generation Status */}
+        {progressData && progressData.scene_progress && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-white/70">Currently generating:</span>
+            <span className="text-white font-medium">
+              Scene {progressData.scene_progress.current} of {progressData.scene_progress.total}
+            </span>
+            {progressData.scene_progress.description && (
+              <span className="text-white/50 truncate max-w-xs">
+                - {progressData.scene_progress.description}
+              </span>
+            )}
+          </div>
+        )}
+        
+        {/* Assembly Status */}
+        {progressData && progressData.assembly_progress && (
+          <div className="flex items-center gap-2 text-sm mt-2">
+            <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+            <span className="text-white/70">Assembling final video...</span>
+            <span className="text-white font-medium">
+              {progressData.assembly_progress.current_step.replace('_', ' ')}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Scene Navigation */}

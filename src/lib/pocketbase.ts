@@ -37,7 +37,7 @@ export interface GenerationJob {
   input_type: 'text' | 'pdf' | 'youtube';
   video?: string;
   error_message?: string;
-  progress_data?: any;
+  progress?: any;
   created: string;
   updated: string;
 }
@@ -167,6 +167,8 @@ export const pbHelpers = {
   },
 
   async updateJob(jobId: string, updates: Partial<GenerationJob>): Promise<GenerationJob> {
+    console.log('Updating job:', jobId, updates);
+
     const record = await pb.collection('generation_jobs').update(jobId, updates);
     return record as GenerationJob;
   },

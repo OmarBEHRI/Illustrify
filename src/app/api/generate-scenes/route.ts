@@ -108,7 +108,7 @@ export async function POST(req: Request) {
         await pbHelpers.updateJob(job.id, { 
           status: 'processing',
           video: video.id,
-          progress_data: { step: 'scenes', progress: 10, message: 'Creating scenes...' }
+          progress: { step: 'scenes', progress: 10, message: 'Creating scenes...' }
         });
         console.log('[Generate Scenes API] Job status updated successfully');
         
@@ -140,29 +140,46 @@ export async function POST(req: Request) {
           console.log(`[Generate Scenes API] Processing scene ${i + 1}/${scenes.length}: "${scene.imageDescription.slice(0, 50)}..."`);          
           
           // Update progress - starting scene
-          const baseProgress = Math.round((i / scenes.length) * 80) + 10;
-          await pbHelpers.updateJob(job.id, {
-            progress_data: {
-              step: 'generating_scenes',
-              progress: baseProgress,
-              message: `Starting scene ${i + 1} of ${scenes.length}`,
-              current_scene: i + 1,
-              total_scenes: scenes.length,
-              sub_step: 'starting'
-            }
-          });
+        const baseProgress = Math.round((i / scenes.length) * 80) + 10;
+        await pbHelpers.updateJob(job.id, {
+          progress: {
+            step: 'generating_scenes',
+            progress: baseProgress,
+            message: `Starting scene ${i + 1} of ${scenes.length}`,
+            current_scene: i + 1,
+            total_scenes: scenes.length,
+            sub_step: 'starting',
+            scene_progress: {
+              current: i + 1,
+              total: scenes.length,
+              status: 'starting',
+              scene_id: null
+            },
+            completed_scenes: generatedScenes.length,
+            timestamp: new Date().toISOString()
+          }
+        });
           
           try {
             
             // Update progress - generating image
             await pbHelpers.updateJob(job.id, {
-              progress_data: {
+              progress: {
                 step: 'generating_scenes',
                 progress: baseProgress + 10,
                 message: `Generating image for scene ${i + 1} of ${scenes.length}`,
                 current_scene: i + 1,
                 total_scenes: scenes.length,
-                sub_step: 'generating_image'
+                sub_step: 'generating_image',
+                scene_progress: {
+                  current: i + 1,
+                  total: scenes.length,
+                  status: 'generating_image',
+                  scene_id: null,
+                  description: scene.imageDescription.slice(0, 100) + '...'
+                },
+                completed_scenes: generatedScenes.length,
+                timestamp: new Date().toISOString()
               }
             });
             
@@ -180,13 +197,22 @@ export async function POST(req: Request) {
             
             // Update progress - generating audio
             await pbHelpers.updateJob(job.id, {
-              progress_data: {
+              progress: {
                 step: 'generating_scenes',
                 progress: baseProgress + 20,
                 message: `Generating audio for scene ${i + 1} of ${scenes.length}`,
                 current_scene: i + 1,
                 total_scenes: scenes.length,
-                sub_step: 'generating_audio'
+                sub_step: 'generating_audio',
+                scene_progress: {
+                  current: i + 1,
+                  total: scenes.length,
+                  status: 'generating_audio',
+                  scene_id: null,
+                  narration: scene.narration.slice(0, 100) + '...'
+                },
+                completed_scenes: generatedScenes.length,
+                timestamp: new Date().toISOString()
               }
             });
             
@@ -210,13 +236,21 @@ export async function POST(req: Request) {
             
             // Update progress - creating video segment
             await pbHelpers.updateJob(job.id, {
-              progress_data: {
+              progress: {
                 step: 'generating_scenes',
                 progress: baseProgress + 30,
                 message: `Creating video segment for scene ${i + 1} of ${scenes.length}`,
                 current_scene: i + 1,
                 total_scenes: scenes.length,
-                sub_step: 'creating_video'
+                sub_step: 'creating_video',
+                scene_progress: {
+                  current: i + 1,
+                  total: scenes.length,
+                  status: 'creating_video',
+                  scene_id: null
+                },
+                completed_scenes: generatedScenes.length,
+                timestamp: new Date().toISOString()
               }
             });
             
@@ -300,14 +334,23 @@ export async function POST(req: Request) {
             const completedProgress = Math.round(((i + 1) / scenes.length) * 80) + 10;
             console.log(`[Generate Scenes API] Updating job progress for scene ${i + 1}`);
             await pbHelpers.updateJob(job.id, {
-              progress_data: { 
+              progress: { 
                 step: 'scene_completed', 
                 progress: completedProgress, 
-                message: `Scene ${i + 1} completed`,
+                message: `Scene ${i + 1} completed successfully`,
                 current_scene: i + 1,
                 total_scenes: scenes.length,
                 sub_step: 'completed',
-                generatedScenes: generatedScenes
+                scene_progress: {
+                  current: i + 1,
+                  total: scenes.length,
+                  status: 'completed',
+                  scene_id: sceneRecord.id,
+                  duration: actualDuration
+                },
+                completed_scenes: generatedScenes.length,
+                generatedScenes: generatedScenes,
+                timestamp: new Date().toISOString()
               }
             });
             
@@ -327,15 +370,24 @@ export async function POST(req: Request) {
         // All scenes generated successfully
         await pbHelpers.updateJob(job.id, {
           status: 'completed',
-          progress_data: { 
+          progress: { 
             step: 'scenes_ready', 
             progress: 100, 
-            message: 'All scenes generated! Ready for assembly.',
-            generatedScenes: generatedScenes,
-            totalScenes: scenes.length,
+            message: 'All scenes generated! Ready for video assembly.',
             current_scene: scenes.length,
             total_scenes: scenes.length,
-            scenes_ready: true
+            sub_step: 'all_completed',
+            scene_progress: {
+              current: scenes.length,
+              total: scenes.length,
+              status: 'all_completed',
+              scene_id: null
+            },
+            completed_scenes: generatedScenes.length,
+            generatedScenes: generatedScenes,
+            totalScenes: scenes.length,
+            scenes_ready: true,
+            timestamp: new Date().toISOString()
           }
         });
         
@@ -400,7 +452,7 @@ export async function GET(req: Request) {
     
     return NextResponse.json({ 
       status: job.status, 
-      progress: job.progress_data,
+      progress: job.progress,
       error: job.error_message,
       scenes: scenes,
       videoId: job.video

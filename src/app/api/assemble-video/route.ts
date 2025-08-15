@@ -56,12 +56,19 @@ export async function POST(req: Request) {
       try {
         console.log(`[Assemble Video API] Starting video assembly for job ${jobId}`);
         
-        // Update job progress
+        // Update job progress - starting assembly
         await pbHelpers.updateJob(jobId, {
-          progress_data: {
+          progress: {
             step: 'assembling',
             progress: 90,
-            message: 'Assembling final video...'
+            message: 'Starting video assembly...',
+            sub_step: 'preparing',
+            assembly_progress: {
+              status: 'preparing',
+              total_scenes: scenes.length,
+              current_step: 'validating_scenes'
+            },
+            timestamp: new Date().toISOString()
           }
         });
         
@@ -94,12 +101,44 @@ export async function POST(req: Request) {
           throw new Error('Not all scene segments are available for assembly');
         }
         
+        // Update progress - scenes validated
+        await pbHelpers.updateJob(jobId, {
+          progress: {
+            step: 'assembling',
+            progress: 92,
+            message: `Validated ${segmentPaths.length} scene segments`,
+            sub_step: 'validated',
+            assembly_progress: {
+              status: 'validated',
+              total_scenes: scenes.length,
+              current_step: 'concatenating_segments'
+            },
+            timestamp: new Date().toISOString()
+          }
+        });
+        
         // Generate final video ID and path
         const finalVideoId = uuid();
         const outputPath = path.join(process.cwd(), 'public', 'assets', 'videos', `${finalVideoId}.mp4`);
         
         // Ensure videos directory exists
         await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        
+        // Update progress - starting concatenation
+        await pbHelpers.updateJob(jobId, {
+          progress: {
+            step: 'assembling',
+            progress: 95,
+            message: `Concatenating ${segmentPaths.length} video segments...`,
+            sub_step: 'concatenating',
+            assembly_progress: {
+              status: 'concatenating',
+              total_scenes: scenes.length,
+              current_step: 'processing_video'
+            },
+            timestamp: new Date().toISOString()
+          }
+        });
         
         // Concatenate all segments into final video
         console.log(`[Assemble Video API] Concatenating ${segmentPaths.length} segments`);
@@ -116,11 +155,19 @@ export async function POST(req: Request) {
         // Update job as completed
         await pbHelpers.updateJob(jobId, {
           status: 'completed',
-          progress_data: {
-            step: 'done',
+          progress: {
+            step: 'video_ready',
             progress: 100,
             message: 'Video assembled successfully!',
-            finalVideoUrl: finalVideoUrl
+            sub_step: 'completed',
+            assembly_progress: {
+              status: 'completed',
+              total_scenes: scenes.length,
+              current_step: 'finished'
+            },
+            finalVideoUrl: finalVideoUrl,
+            video_ready: true,
+            timestamp: new Date().toISOString()
           }
         });
         

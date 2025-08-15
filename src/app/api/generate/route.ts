@@ -55,14 +55,14 @@ export async function POST(req: Request) {
       try {
         await pbHelpers.updateJob(job.id, { 
           status: 'processing',
-          progress_data: { step: 'extracting', progress: 10, message: 'Starting generation...' }
+          progress: { step: 'extracting', progress: 10, message: 'Starting generation...' }
         });
         
         console.log(`[Generate API] Starting video generation for job ${job.id}`);
         
         // Update progress during generation
         await pbHelpers.updateJob(job.id, { 
-          progress_data: { step: 'scenes', progress: 25, message: 'Creating scenes...' }
+          progress: { step: 'scenes', progress: 25, message: 'Creating scenes...' }
         });
         
         const result = await generateVideo(story, style, {
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
           await pbHelpers.updateJob(job.id, { 
             status: 'completed', 
             video: video.id,
-            progress_data: { step: 'done', progress: 100, message: 'Video generated successfully!' }
+            progress: { step: 'done', progress: 100, message: 'Video generated successfully!' }
           });
           
           console.log(`[Generate API] Video generation completed for job ${job.id}: ${result.videoUrl}`);
@@ -146,7 +146,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ 
       status: job.status, 
       url: videoUrl,
-      progress: job.progress_data,
+      progress: job.progress,
       error: job.error_message
     });
   } catch (error: any) {

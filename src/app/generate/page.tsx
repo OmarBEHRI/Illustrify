@@ -16,6 +16,28 @@ interface GenerationProgress {
   progress: number;
   message: string;
   generatedImages?: string[];
+  current_scene?: number;
+  total_scenes?: number;
+  sub_step?: string;
+  scene_progress?: {
+    current: number;
+    total: number;
+    status: string;
+    scene_id?: string;
+    description?: string;
+    narration?: string;
+    duration?: number;
+  };
+  assembly_progress?: {
+    status: string;
+    total_scenes: number;
+    current_step: string;
+  };
+  completed_scenes?: number;
+  scenes_ready?: boolean;
+  video_ready?: boolean;
+  finalVideoUrl?: string;
+  timestamp?: string;
 }
 
 interface GenerationJob {
@@ -284,7 +306,14 @@ export default function GeneratePage() {
 
         // Update progress based on API response
         if (data.progress) {
-          setGenerationProgress(data.progress);
+          const progressData = data.progress;
+          setGenerationProgress(progressData);
+          
+          // Handle video assembly completion
+          if (progressData.video_ready && progressData.finalVideoUrl) {
+            setVideoUrl(progressData.finalVideoUrl);
+            setIsAssembling(false);
+          }
         }
 
         // Update scenes if using scene generation
@@ -292,30 +321,59 @@ export default function GeneratePage() {
           setScenes(data.scenes);
         }
 
-        // Update regeneration state
-        if (data.status === 'processing' && !isRegenerating) {
+        // Update regeneration state based on progress
+        if (data.progress?.scene_progress?.status === 'completed' && isRegenerating) {
           setIsRegenerating(false);
           setRegeneratingSceneId(undefined);
         }
 
-        // Update assembly state
-        if (data.status === 'processing' && !isAssembling) {
-          setIsAssembling(false);
+        // Update assembly state based on progress
+        if (data.progress?.assembly_progress?.status === 'preparing' && !isAssembling) {
+          setIsAssembling(true);
         }
 
         if (data.status === 'completed') {
-          setVideoUrl(data.url);
+          // Check if this is scene generation completion or final video completion
+          if (data.progress?.video_ready && data.progress?.finalVideoUrl) {
+            // Final video is ready
+            setVideoUrl(data.progress.finalVideoUrl);
+            setGenerationProgress({ 
+              step: 'done', 
+              progress: 100, 
+              message: 'Video assembled successfully!', 
+              generatedImages: data.progress?.generatedImages || [],
+              video_ready: true,
+              finalVideoUrl: data.progress.finalVideoUrl
+            });
+          } else if (data.progress?.scenes_ready) {
+            // Scenes are ready, but video not assembled yet
+            setGenerationProgress({ 
+              step: 'done', 
+              progress: 100, 
+              message: 'All scenes generated! Ready for video assembly.', 
+              generatedImages: data.progress?.generatedImages || [],
+              scenes_ready: true
+            });
+          } else {
+            // Fallback for other completion types
+            setVideoUrl(data.url || data.video_url);
+            setGenerationProgress({ 
+              step: 'done', 
+              progress: 100, 
+              message: 'Video generated successfully!', 
+              generatedImages: data.progress?.generatedImages || [] 
+            });
+          }
+          
           setLoading(false);
           setIsRegenerating(false);
           setIsAssembling(false);
           setRegeneratingSceneId(undefined);
-          setGenerationProgress({ 
-            step: 'done', 
-            progress: 100, 
-            message: 'Video generated successfully!', 
-            generatedImages: data.progress?.generatedImages || [] 
-          });
-          clearInterval(t);
+          
+          // Only clear interval if final video is ready or not using scene generation
+          if (!useSceneGeneration || data.progress?.video_ready) {
+            clearInterval(t);
+          }
         }
         
         if (data.status === 'failed') {
@@ -470,7 +528,15 @@ export default function GeneratePage() {
 
           {/* Middle preview container */}
           <div className="lg:col-span-1 order-first lg:order-none">
-            {useSceneGeneration && scenes.length > 0 ? (
+            {/* Show final video if it's ready, regardless of scene generation mode */}
+            {videoUrl || (generationProgress?.video_ready && generationProgress?.finalVideoUrl) ? (
+              <div className="card h-[400px] flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <video controls className="w-full h-full object-cover rounded-xl border border-white/15">
+                  <source src={videoUrl || generationProgress?.finalVideoUrl} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            ) : useSceneGeneration && scenes.length > 0 ? (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <SceneSlideshow
                   jobId={jobId || ''}
@@ -487,10 +553,6 @@ export default function GeneratePage() {
               <div className="card h-[400px] flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {loading && generationProgress ? (
                   <GenerationProgressView progress={generationProgress} />
-                ) : videoUrl ? (
-                  <video controls className="w-full h-full object-cover rounded-xl border border-white/15">
-                    <source src={videoUrl} type="video/mp4" />
-                  </video>
                 ) : (
                   <div className="text-center text-white/70">
                     <Tv2 className="mx-auto h-10 w-10 mb-3" />
