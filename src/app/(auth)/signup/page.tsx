@@ -21,7 +21,7 @@ export default function SignUpPage() {
     try {
       if (password !== confirm) throw new Error('Passwords do not match');
       await signUp(email, name, password);
-      router.push('/generate');
+      router.push('/video');
     } catch (err: any) {
       setError(err.message || 'Could not create account');
     } finally {

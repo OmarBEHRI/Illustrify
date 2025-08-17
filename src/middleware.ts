@@ -6,7 +6,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/generate', '/gallery', '/profile']
+  matcher: ['/video', '/image', '/audio', '/gallery', '/profile']
 };
 
 

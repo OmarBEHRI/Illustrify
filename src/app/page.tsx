@@ -23,7 +23,7 @@ export default function HomePage() {
             Paste text, upload a PDF, or use a YouTube URL. Choose a visual style and quality, then generate a short narrated video in English.
           </p>
           <div className="mt-8 flex items-center justify-center gap-4">
-            <Link href="/generate" className="btn-accent inline-flex items-center gap-2">
+            <Link href="/video" className="btn-accent inline-flex items-center gap-2">
               Start creating <ArrowRight className="h-4 w-4" />
             </Link>
             <Link href="/gallery" className="btn-primary">View gallery</Link>

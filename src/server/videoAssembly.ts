@@ -8,6 +8,7 @@ import { v4 as uuid } from 'uuid';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import fsSync from 'fs';
+import sharp from 'sharp';
 
 // Ensure ffmpeg binary path is set robustly (avoid Next bundling .next vendor-chunks)
 function resolveFfmpegBinary(): string | null {
@@ -377,6 +378,23 @@ export function getAudioDuration(audioPath: string): Promise<number> {
 }
 
 /**
+ * Get image dimensions using sharp
+ */
+export async function getImageDimensions(imagePath: string): Promise<{ width: number; height: number }> {
+  try {
+    const metadata = await sharp(imagePath).metadata();
+    return {
+      width: metadata.width || 1920,
+      height: metadata.height || 1080
+    };
+  } catch (error) {
+    console.error(`[VideoAssembly] Failed to get image dimensions for ${imagePath}:`, error);
+    // Return default 16:9 dimensions if we can't read the image
+    return { width: 1920, height: 1080 };
+  }
+}
+
+/**
  * Generate multiple audio files for scenes with custom naming
  */
 async function generateScenesAudio(scenes: Scene[], videoId: string, ttsOptions?: TTSOptions): Promise<{ audioUrls: string[]; errors: string[]; audioDurations: number[] }> {
@@ -481,14 +499,26 @@ async function assembleVideo(imageUrls: string[], audioUrls: string[], audioDura
         console.log(`[VideoAssembly] Audio duration for ${audioPath}: ${duration}s`);
       }
 
-      // Create video segments using actual durations and improved naming
+      // Get dimensions from the first image to determine video aspect ratio
+      const firstImageDimensions = await getImageDimensions(localImagePaths[0]);
+      console.log(`[VideoAssembly] Using dimensions from first image: ${firstImageDimensions.width}x${firstImageDimensions.height}`);
+      
+      // Create video segments using actual durations and consistent dimensions
       const segmentPaths: string[] = [];
       
       for (let i = 0; i < localImagePaths.length; i++) {
         const segmentPath = path.join(tempDir, `scene_${i}.mp4`);
         segmentPaths.push(segmentPath);
         
-        await createVideoSegment(localImagePaths[i], localAudioPaths[i], actualDurations[i], segmentPath);
+        // Use the first image's dimensions for all segments to ensure consistency
+        await createVideoSegment(
+          localImagePaths[i], 
+          localAudioPaths[i], 
+          actualDurations[i], 
+          segmentPath,
+          firstImageDimensions.width,
+          firstImageDimensions.height
+        );
         console.log(`[VideoAssembly] Created segment ${i}: ${segmentPath}`);
       }
 
@@ -618,15 +648,28 @@ export async function createVideoSegment(
   imagePath: string,
   audioPath: string,
   duration: number,          // narration length in seconds
-  outputPath: string
+  outputPath: string,
+  width?: number,           // video width (defaults to image width)
+  height?: number           // video height (defaults to image height)
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const FPS = 25;
-    const WIDTH = 1920;
-    const HEIGHT = 1080;
+  return new Promise(async (resolve, reject) => {
+    try {
+      const FPS = 25;
+      
+      // Get image dimensions if not provided
+      let WIDTH = width;
+      let HEIGHT = height;
+      
+      if (!WIDTH || !HEIGHT) {
+        const dimensions = await getImageDimensions(imagePath);
+        WIDTH = WIDTH || dimensions.width;
+        HEIGHT = HEIGHT || dimensions.height;
+      }
+      
+      console.log(`[VideoAssembly] Creating video segment with dimensions: ${WIDTH}x${HEIGHT}`);
 
-    const totalDuration = duration + 1; // narration + 1s silence
-    const totalFrames = Math.round(totalDuration * FPS);
+      const totalDuration = duration + 1; // narration + 1s silence
+      const totalFrames = Math.round(totalDuration * FPS);
 
     const startZoom = 1.0;
     const endZoom   = 1.2;
@@ -708,6 +751,11 @@ export async function createVideoSegment(
         reject(err);
       })
       .run();
+      
+    } catch (error) {
+      console.error(`[VideoAssembly] Error in createVideoSegment:`, error);
+      reject(error);
+    }
   });
 }
 

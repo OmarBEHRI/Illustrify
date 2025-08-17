@@ -51,7 +51,7 @@ export default function GalleryPage() {
             </div>
           ))}
           {!loading && videos.length === 0 && (
-            <div className="text-white/70">No videos yet. <Link href="/generate" className="text-emerald-400 hover:underline">Generate one!</Link></div>
+            <div className="text-white/70">No videos yet. <Link href="/video" className="text-emerald-400 hover:underline">Generate one!</Link></div>
           )}
         </div>
       </section>

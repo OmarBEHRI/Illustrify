@@ -200,7 +200,7 @@ export const pbHelpers = {
 
   async getUserVideos(userId: string): Promise<Video[]> {
     const records = await pb.collection('videos').getFullList({
-      filter: `user = "${userId}"`,
+      filter: `user = "${userId}" && video_url != ""`,
       sort: '-created',
     });
     return records as Video[];

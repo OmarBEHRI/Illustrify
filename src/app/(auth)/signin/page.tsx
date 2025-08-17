@@ -18,7 +18,7 @@ export default function SignInPage() {
     setError(null);
     try {
       await signIn(email, password);
-      router.push('/generate');
+      router.push('/video');
     } catch (err: any) {
       setError(err.message || 'Invalid credentials');
     } finally {

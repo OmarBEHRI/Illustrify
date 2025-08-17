@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Film, User2, CreditCard, Plus } from 'lucide-react';
+import { Film, User2, CreditCard, Plus, Image as ImageIcon, Volume2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface NavigationProps {
@@ -28,12 +28,30 @@ export default function Navigation({ className = '' }: NavigationProps) {
         {/* Navigation Links - Right side */}
         <div className="flex items-center gap-6 text-sm">
           <Link 
-            href="/generate" 
+            href="/video" 
             className={`font-semibold nav-link inline-flex items-center gap-2 hover:text-white transition-colors ${
-              isActive('/generate') ? 'text-white active' : 'text-white/70'
+              isActive('/video') ? 'text-white active' : 'text-white/70'
             }`}
           >
-            <Plus className="h-4 w-4"/> Create
+            <Plus className="h-4 w-4"/> Video
+          </Link>
+
+          <Link 
+            href="/image" 
+            className={`font-semibold nav-link inline-flex items-center gap-2 hover:text-white transition-colors ${
+              isActive('/image') ? 'text-white active' : 'text-white/70'
+            }`}
+          >
+            <ImageIcon className="h-4 w-4"/> Image
+          </Link>
+
+          <Link 
+            href="/audio" 
+            className={`font-semibold nav-link inline-flex items-center gap-2 hover:text-white transition-colors ${
+              isActive('/audio') ? 'text-white active' : 'text-white/70'
+            }`}
+          >
+            <Volume2 className="h-4 w-4"/> Audio
           </Link>
           
           <Link 

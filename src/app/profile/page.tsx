@@ -153,7 +153,7 @@ export default function ProfilePage() {
                 Quick Actions
               </h3>
               <div className="space-y-2">
-                <Link href="/generate" className="w-full p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center gap-2">
+                <Link href="/video" className="w-full p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center gap-2">
                   <Plus className="h-4 w-4 text-white/70" />
                   <div>
                     <p className="font-medium text-sm">Create Video</p>
