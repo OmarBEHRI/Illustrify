@@ -1,0 +1,127 @@
+{
+  "94": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "98": {
+    "inputs": {
+      "samples": [
+        "137",
+        0
+      ],
+      "vae": [
+        "94",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "100": {
+    "inputs": {
+      "text": "A crowded city street at midday, full of life and energy. Skyscrapers tower above with billboards and digital screens glowing. In the foreground, a young woman in a red coat is rushing across the crosswalk, holding a coffee cup while checking her phone. Nearby, a street vendor with a small cart is grilling skewers, steam rising into the air as customers line up. A businessman in a grey suit and glasses is hailing a yellow taxi, while a group of teenagers with backpacks laugh and take selfies under a neon sign. On the sidewalk, an elderly man with a cane slowly makes his way past a flower stand, where colorful bouquets brighten the scene. Cyclists weave between cars, and a delivery rider on a scooter speeds by with a large food box on his back. In the distance, an elevated train roars past above the street, and pigeons scatter into the sky. The whole scene feels alive, chaotic, and vibrant, capturing the pulse of a busy city.",
+      "clip": [
+        "135",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Positive"
+    }
+  },
+  "124": {
+    "inputs": {
+      "unet_name": "flux1-krea-dev-Q5_1.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "135": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
+      "type": "flux",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "DualCLIPLoader"
+    }
+  },
+  "136": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "137": {
+    "inputs": {
+      "seed": 1033673399726565,
+      "steps": 20,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "124",
+        0
+      ],
+      "positive": [
+        "100",
+        0
+      ],
+      "negative": [
+        "139",
+        0
+      ],
+      "latent_image": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "139": {
+    "inputs": {
+      "text": "Blurry, bad quality",
+      "clip": [
+        "135",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Negative"
+    }
+  },
+  "140": {
+    "inputs": {
+      "images": [
+        "98",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  }
+}

@@ -14,14 +14,14 @@ function buildSystemPrompt(visualStyle: string) {
   return [
     "You are an expert Video Director AI specialized in creating coherent visual narratives.",
     "Your job: Given some input text, first extract the complete story, translate it to English if needed, preserving ALL details.",
-    "Then transform the story into a sequence of scenes that tell a clear, complete story from beginning to end.",
+    "Then transform the story into a sequence of 6 to 10 scenes that tell a clear, complete, and continuous story from beginning to end.",
     "Each scene must be a pair: (image_description, narration).",
     "STORY CONTINUITY REQUIREMENTS:",
-    "- The narrations MUST work together to tell one complete, coherent story from A to Z.",
-    "- Scene 1 should establish the setting, characters, or initial situation.",
-    "- Middle scenes should develop the plot, showing progression, conflict, or key events.",
-    "- Final scene should provide resolution, conclusion, or clear ending.",
-    "- Each narration should logically flow from the previous one and lead to the next.",
+    "- The narrations MUST work together to tell one complete, coherent story from start to finish.",
+    "- Scene 1 should provide a strong introduction that establishes the setting, characters, and initial situation.",
+    "- Middle scenes should naturally develop the plot, showing progression, transitions, conflicts, or key events.",
+    "- The final scene must deliver a resolution, conclusion, or clear ending that ties the story together.",
+    "- Each narration must logically flow from the previous one and set up the next, ensuring smooth transitions.",
     "- Maintain consistent story elements (characters, setting, timeline) throughout all scenes.",
     "Image description requirements:",
     "- Be fully objective. Do not include non-visual or non-renderable concepts (e.g., character names, inner thoughts, or known city names).",
@@ -31,13 +31,13 @@ function buildSystemPrompt(visualStyle: string) {
     "- Always append the visual style at the very end of the description as: Visual style: {visual_style}.",
     "Narration requirements:",
     "- Keep narrations SHORT and SIMPLE (1-2 sentences max).",
-    "- Focus on ADVANCING THE STORY PLOT in logical sequence.",
-    "- Use natural, conversational storytelling language that flows from scene to scene.",
+    "- Narrations must advance the story plot in a logical sequence, not just describe the scene.",
+    "- Use natural, conversational storytelling language that flows smoothly from one scene to the next.",
     "- Avoid overly descriptive or poetic language - be direct and engaging.",
-    "- Each narration should build upon the previous scenes and set up the next ones.",
-    "- The combined narrations should tell a complete story that makes sense when heard in sequence.",
+    "- Each narration should build upon the previous scenes and transition into the next.",
+    "- The combined narrations should clearly tell a continuous and creative full story when heard in sequence.",
     "Output strictly as pure JSON with this shape: { \"scenes\": [ { \"image_description\": string, \"narration\": string }, ... ] }.",
-    `Use the following visual style token everywhere: {visual_style} = "${visualStyle}".`,
+    "Use the following visual style token everywhere: {visual_style} = \"${visualStyle}\".",
   ].join("\n");
 }
 
@@ -86,7 +86,7 @@ async function callOpenRouter(inputText: string, visualStyle: string): Promise<S
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'openai/gpt-5-nano',
+      model: 'openai/gpt-5-mini',
       temperature: 0.3,
       messages: [
         { role: 'system', content: buildSystemPrompt(visualStyle) },

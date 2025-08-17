@@ -41,3 +41,8 @@ public/assets/videos
 temp/
 
 image_outputs/
+
+Image-Gen-Server/models/vae/*
+Image-Gen-Server/models/unet/*
+Image-Gen-Server/models/text_encoders/*
+Image-Gen-Server/output/*

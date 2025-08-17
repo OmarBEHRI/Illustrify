@@ -541,7 +541,7 @@ async function assembleVideo(imageUrls: string[], audioUrls: string[], audioDura
 /**
  * Main function to generate a complete video from story input
  */
-export async function generateVideo(inputText: string, visualStyle: string, ttsOptions?: TTSOptions): Promise<VideoGenerationResult> {
+export async function generateVideo(inputText: string, visualStyle: string, ttsOptions?: TTSOptions, quality?: number): Promise<VideoGenerationResult> {
   const errors: string[] = [];
   const videoId = uuid(); // Generate unique video ID
   
@@ -561,7 +561,7 @@ export async function generateVideo(inputText: string, visualStyle: string, ttsO
     // Step 2: Generate images for all scenes
     console.log('[VideoAssembly] Step 2: Generating images for scenes...');
     const imageDescriptions = scenes.map(scene => scene.imageDescription);
-    const imageResult = await generateSceneImages(imageDescriptions);
+    const imageResult = await generateSceneImages(imageDescriptions, quality);
     
     if (!imageResult.success || imageResult.images.length === 0) {
       return {
@@ -614,56 +614,98 @@ export async function generateVideo(inputText: string, visualStyle: string, ttsO
 /**
  * Create a single video segment from image and audio
  */
-export async function createVideoSegment(imagePath: string, audioPath: string, duration: number, outputPath: string): Promise<void> {
+export async function createVideoSegment(
+  imagePath: string,
+  audioPath: string,
+  duration: number,          // narration length in seconds
+  outputPath: string
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    ensureFfmpegConfigured();
     const FPS = 25;
     const WIDTH = 1920;
     const HEIGHT = 1080;
-    const totalDuration = duration + 1; // narration + 1 sec silence
-    const totalFrames = Math.round(totalDuration * FPS);
-    const startZoom = 1.0;
-    const endZoom = 1.2;
 
-    const zoomFilter = [
-      `scale=iw*max(${WIDTH}/iw\\,${HEIGHT}/ih):ih*max(${WIDTH}/iw\\,${HEIGHT}/ih)`,
-      `crop=${WIDTH}:${HEIGHT}`,
-      `zoompan=z='${startZoom} + (${endZoom}-${startZoom})*on/${totalFrames}':d=${totalFrames}:s=${WIDTH}x${HEIGHT}:fps=${FPS}`
-    ].join(',');
+    const totalDuration = duration + 1; // narration + 1s silence
+    const totalFrames = Math.round(totalDuration * FPS);
+
+    const startZoom = 1.0;
+    const endZoom   = 1.2;
+    const dz        = (endZoom - startZoom) / totalFrames;
+
+    // Supersample factor: render the zoom at 2x and then downscale -> smoother
+    const SS = 2;
+    const SW = WIDTH * SS;
+    const SH = HEIGHT * SS;
+
+    // Pre-fit the still so it fully covers the supersampled canvas (centered)
+    const prefit =
+      `scale=iw*max(${SW}/iw\\,${SH}/ih):ih*max(${SW}/iw\\,${SH}/ih),` +
+      `crop=${SW}:${SH}`;
+
+    // Incremental zoom: start at startZoom, then add a tiny dz every frame
+    const zExpr = `if(eq(on,1),${startZoom.toFixed(6)},min(${endZoom.toFixed(6)},zoom+${dz.toFixed(10)}))`;
+    const xExpr = `iw/2 - (iw/zoom)/2`;
+    const yExpr = `ih/2 - (ih/zoom)/2`;
+
+    const zp =
+      `zoompan=` +
+      `z='${zExpr}':` +
+      `x='${xExpr}':y='${yExpr}':` +
+      `s=${SW}x${SH}:d=${totalFrames}:fps=${FPS}`;
+
+    // High-quality downscale back to 1920x1080 after supersampled zoom
+    const post =
+      `scale=${WIDTH}:${HEIGHT}:flags=lanczos+accurate_rnd+full_chroma_inp+full_chroma_int,` +
+      `setsar=1`;
+
+    const videoChain = `[0:v]${prefit},${zp},${post}[v]`;
+
+    // 1s of silence that matches the narration’s format before concat
+    const audioChain =
+      `[1:a]aformat=channel_layouts=stereo:sample_rates=48000[a1];` +
+      `[2:a]aformat=channel_layouts=stereo:sample_rates=48000[a2];` +
+      `[a1][a2]concat=n=2:v=0:a=1[a]`;
 
     ffmpeg()
+      // Still image (loop)
       .input(imagePath)
       .inputOptions(['-loop', '1'])
+
+      // Narration
       .input(audioPath)
-      .input('anullsrc=r=48000:cl=stereo')
+
+      // Exactly 1s silence
+      .input('aevalsrc=0:c=2:s=48000:d=1')
       .inputFormat('lavfi')
-      .inputOptions(['-t', '1'])
-      .complexFilter([
-        `[0:v]${zoomFilter}[v]`,
-        `[1:a][2:a]concat=n=2:v=0:a=1[a]`
-      ])
+
+      .complexFilter([ videoChain, audioChain ])
       .map('[v]')
       .map('[a]')
+
       .outputOptions([
         '-c:v', 'libx264',
         '-pix_fmt', 'yuv420p',
-        `-r`, `${FPS}`,
+        // Do NOT set -r here; zoompan already emitted clean CFR frames
+        '-t', `${totalDuration}`,
         '-c:a', 'aac',
         '-ar', '48000',
         '-ac', '2',
         '-b:a', '192k',
-        `-t`, `${totalDuration}`
+        '-movflags', '+faststart',
+        // High-quality scaler flags for any fallback scaling
+        '-sws_flags', 'lanczos+accurate_rnd+full_chroma_inp+full_chroma_int'
       ])
       .output(outputPath)
+
       .on('start', (cmd) => console.log(`[VideoAssembly] FFmpeg segment command: ${cmd}`))
-      .on('progress', (progress) => console.log(`[VideoAssembly] Segment progress: ${Math.round(progress.percent || 0)}%`))
+      .on('progress', (p) => console.log(`[VideoAssembly] Segment progress: ${Math.round(p.percent || 0)}%`))
       .on('end', () => {
         console.log(`[VideoAssembly] Segment created successfully: ${outputPath}`);
         resolve();
       })
-      .on('error', (error) => {
-        console.error(`[VideoAssembly] Segment creation failed:`, error);
-        reject(error);
+      .on('error', (err) => {
+        console.error(`[VideoAssembly] Segment creation failed:`, err);
+        reject(err);
       })
       .run();
   });

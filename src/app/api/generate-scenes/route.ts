@@ -185,7 +185,9 @@ export async function POST(req: Request) {
             
             // Generate image for this scene
             console.log(`[Generate Scenes API] Generating image for scene ${i + 1}`);
-            const imageResult = await generateSceneImage(scene.imageDescription);
+            // Convert quality string to number: low=20, high=30, max=35
+            const qualityValue = quality === 'high' ? 30 : quality === 'max' ? 35 : 20;
+            const imageResult = await generateSceneImage(scene.imageDescription, qualityValue);
             console.log(`[Generate Scenes API] Image generation result for scene ${i + 1}:`, {
               success: imageResult.success,
               hasImageUrl: !!imageResult.imageUrl
@@ -440,6 +442,7 @@ export async function GET(req: Request) {
           ...scene,
           scene_number: scene.scene_order, // Map scene_order to scene_number for UI compatibility
           description: scene.image_description, // Map image_description to description for UI compatibility
+          narration: scene.narration, // Include narration field for UI
           image_url: scene.image_url ? `/assets/images/${scene.image_url}` : undefined,
           audio_url: scene.audio_url ? `/assets/audio/${scene.audio_url}` : undefined,
           video_url: scene.video_url ? `/assets/temp/${scene.video_url}` : undefined,

@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import WebSocket from 'ws';
 import { v4 as uuid } from 'uuid';
 
 // ComfyUI server configuration
@@ -14,6 +13,7 @@ interface WorkflowJSON {
     inputs: Record<string, any>;
     class_type: string;
     _meta?: any;
+    widgets_values?: any[];
   };
 }
 
@@ -26,6 +26,24 @@ interface ImageGenResult {
 // Generate unique client ID
 function generateClientId(): string {
   return `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Convert ComfyUI export format to API format
+function convertWorkflowToAPIFormat(exportedWorkflow: any): WorkflowJSON {
+  const apiWorkflow: WorkflowJSON = {};
+  
+  if (exportedWorkflow.nodes && Array.isArray(exportedWorkflow.nodes)) {
+    for (const node of exportedWorkflow.nodes) {
+      apiWorkflow[node.id.toString()] = {
+        inputs: node.inputs || {},
+        class_type: node.type,
+        _meta: node._meta || { title: node.title },
+        widgets_values: node.widgets_values
+      };
+    }
+  }
+  
+  return apiWorkflow;
 }
 
 // Queue prompt to ComfyUI server
@@ -118,27 +136,37 @@ async function waitForImages(promptId: string): Promise<Buffer[]> {
 /**
  * Generate an image using ComfyUI workflow
  */
-export async function generateImage(prompt: string, seed?: number): Promise<ImageGenResult> {
+export async function generateImage(prompt: string, seed?: number, quality: number = 20): Promise<ImageGenResult> {
   try {
     // Load workflow template
-    const workflowPath = path.join(process.cwd(), 'image-gen-worflows', 'qwen-image_workflow.json');
+    const workflowPath = path.join(process.cwd(), 'image-gen-worflows', 'Flux-KREA-Image-Gen.json');
     let workflow: WorkflowJSON;
     
     try {
       const workflowContent = await fs.readFile(workflowPath, 'utf8');
-      workflow = JSON.parse(workflowContent);
+      const rawWorkflow = JSON.parse(workflowContent);
+      
+      // Convert from ComfyUI export format to API format if needed
+      if (rawWorkflow.nodes && Array.isArray(rawWorkflow.nodes)) {
+        workflow = convertWorkflowToAPIFormat(rawWorkflow);
+      } else {
+        workflow = rawWorkflow;
+      }
     } catch (error) {
       console.error('Failed to load workflow:', error);
       return { success: false, images: [], error: 'Failed to load workflow template' };
     }
 
-    // Set prompt and seed in workflow
+    // Set prompt, seed, and quality in workflow
+    // Node 100 is the positive prompt (CLIPTextEncode)
     if (workflow['100']?.inputs) {
       workflow['100'].inputs.text = prompt;
     }
     
-    if (workflow['95']?.inputs) {
-      workflow['95'].inputs.seed = seed || Math.floor(Math.random() * 4294967296);
+    // Node 137 is the KSampler with seed and steps in widgets_values
+    if (workflow['137']?.widgets_values) {
+      workflow['137'].widgets_values[0] = seed || Math.floor(Math.random() * 4294967296); // seed
+      workflow['137'].widgets_values[2] = quality; // steps
     }
 
     // Generate and queue prompt
@@ -171,11 +199,11 @@ export async function generateImage(prompt: string, seed?: number): Promise<Imag
 /**
  * Generate a single image for a scene
  */
-export async function generateSceneImage(imageDescription: string): Promise<{ success: boolean; imageUrl?: string; error?: string }> {
+export async function generateSceneImage(imageDescription: string, quality: number = 20): Promise<{ success: boolean; imageUrl?: string; error?: string }> {
   try {
     console.log(`[ComfyUI] Generating single scene image: "${imageDescription.slice(0, 60)}..."`); 
     
-    const result = await generateImage(imageDescription);
+    const result = await generateImage(imageDescription, undefined, quality);
     
     if (result.success && result.images.length > 0) {
       // Save the image and return URL
@@ -205,7 +233,7 @@ export async function generateSceneImage(imageDescription: string): Promise<{ su
 /**
  * Generate multiple images for scenes
  */
-export async function generateSceneImages(imageDescriptions: string[]): Promise<{ success: boolean; images: Buffer[]; errors: string[] }> {
+export async function generateSceneImages(imageDescriptions: string[], quality: number = 20): Promise<{ success: boolean; images: Buffer[]; errors: string[] }> {
   const results: Buffer[] = [];
   const errors: string[] = [];
   
@@ -215,7 +243,7 @@ export async function generateSceneImages(imageDescriptions: string[]): Promise<
     const description = imageDescriptions[i];
     console.log(`[ComfyUI] Generating scene ${i + 1}/${imageDescriptions.length}: "${description.slice(0, 60)}..."`);
     
-    const result = await generateImage(description);
+    const result = await generateImage(description, undefined, quality);
     
     if (result.success && result.images.length > 0) {
       results.push(result.images[0]); // Take first generated image

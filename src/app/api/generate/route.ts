@@ -65,10 +65,13 @@ export async function POST(req: Request) {
           progress: { step: 'scenes', progress: 25, message: 'Creating scenes...' }
         });
         
+        // Convert quality string to number: low=20, high=30, max=35
+        const qualityValue = q === 'HIGH' ? 30 : q === 'MAX' ? 35 : 20;
+        
         const result = await generateVideo(story, style, {
           ttsEngine: selectedTtsEngine,
           voice: selectedVoice
-        });
+        }, qualityValue);
         
         if (result.success && result.videoUrl) {
           const videoTitle = (story as string).slice(0, 80) + '...';

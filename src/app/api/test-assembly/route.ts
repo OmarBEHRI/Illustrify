@@ -268,7 +268,7 @@ async function createVideoSegment(imagePath: string, audioPath: string, duration
     const zoomFilter = [
       `scale=iw*max(${WIDTH}/iw\\,${HEIGHT}/ih):ih*max(${WIDTH}/iw\\,${HEIGHT}/ih)`,
       `crop=${WIDTH}:${HEIGHT}`,
-      `zoompan=z='${startZoom} + (${endZoom}-${startZoom})*on/${totalFrames}':d=${totalFrames}:s=${WIDTH}x${HEIGHT}:fps=${FPS}`
+      `zoompan=z='${startZoom} + (${endZoom}-${startZoom})*on/${totalFrames}':x='(iw-ow*z)/2':y='(ih-oh*z)/2':d=${totalFrames}:s=${WIDTH}x${HEIGHT}:fps=${FPS}`
     ].join(',');
 
     ffmpeg()

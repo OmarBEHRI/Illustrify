@@ -14,12 +14,31 @@ interface WorkflowJSON {
     inputs: Record<string, any>;
     class_type: string;
     _meta?: any;
+    widgets_values?: any[];
   };
 }
 
 // Generate unique client ID
 function generateClientId(): string {
-  return `web-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Convert ComfyUI export format to API format
+function convertWorkflowToAPIFormat(exportedWorkflow: any): WorkflowJSON {
+  const apiWorkflow: WorkflowJSON = {};
+  
+  if (exportedWorkflow.nodes && Array.isArray(exportedWorkflow.nodes)) {
+    for (const node of exportedWorkflow.nodes) {
+      apiWorkflow[node.id.toString()] = {
+        inputs: node.inputs || {},
+        class_type: node.type,
+        _meta: node._meta || { title: node.title },
+        widgets_values: node.widgets_values
+      };
+    }
+  }
+  
+  return apiWorkflow;
 }
 
 // Queue prompt to ComfyUI server
@@ -113,24 +132,33 @@ export async function POST(request: Request) {
     }
 
     // Load workflow template
-    const workflowPath = path.join(process.cwd(), 'image-gen-worflows', 'qwen-image_workflow.json');
+    const workflowPath = path.join(process.cwd(), 'image-gen-worflows', 'Flux-KREA-Image-Gen.json');
     let workflow: WorkflowJSON;
     
     try {
       const workflowContent = await fs.readFile(workflowPath, 'utf8');
-      workflow = JSON.parse(workflowContent);
+      const rawWorkflow = JSON.parse(workflowContent);
+      
+      // Convert from ComfyUI export format to API format if needed
+      if (rawWorkflow.nodes && Array.isArray(rawWorkflow.nodes)) {
+        workflow = convertWorkflowToAPIFormat(rawWorkflow);
+      } else {
+        workflow = rawWorkflow;
+      }
     } catch (error) {
       console.error('Failed to load workflow:', error);
       return NextResponse.json({ error: 'Failed to load workflow template' }, { status: 500 });
     }
 
     // Set prompt and seed in workflow
+    // Node 100 is the positive prompt (CLIPTextEncode)
     if (workflow['100']?.inputs) {
       workflow['100'].inputs.text = prompt;
     }
     
-    if (workflow['95']?.inputs) {
-      workflow['95'].inputs.seed = seed || Math.floor(Math.random() * 4294967296);
+    // Node 137 is the KSampler with seed in widgets_values
+    if (workflow['137']?.widgets_values) {
+      workflow['137'].widgets_values[0] = seed || Math.floor(Math.random() * 4294967296); // seed
     }
 
     // Generate and queue prompt

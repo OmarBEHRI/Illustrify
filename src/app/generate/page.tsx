@@ -1,12 +1,11 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Upload, Youtube, Image, Tv2, FileText, Scissors, Palette, Music, CheckCircle, Clock } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Upload, Youtube, Image, Tv2, FileText, Scissors, Palette, Music, CheckCircle, Clock, Film, Volume2, Video } from 'lucide-react';
 import Link from 'next/link';
 import PageTemplate from '@/components/PageTemplate';
 import { useAuth } from '@/contexts/AuthContext';
 import pb from '@/lib/pocketbase';
 import SceneSlideshow from '@/components/SceneSlideshow';
-
 type Quality = 'LOW' | 'HIGH' | 'MAX';
 
 type GenerationStep = 'extracting' | 'scenes' | 'images' | 'audio' | 'video' | 'done';
@@ -55,6 +54,7 @@ interface Scene {
   id: string;
   scene_number: number;
   description: string;
+  narration?: string;
   image_url?: string;
   audio_url?: string;
   video_url?: string;
@@ -240,7 +240,8 @@ export default function GeneratePage() {
           jobId,
           sceneId,
           ttsEngine,
-          voice: selectedVoice
+          voice: selectedVoice,
+          quality: quality.toLowerCase()
         }),
       });
 
@@ -322,7 +323,8 @@ export default function GeneratePage() {
         }
 
         // Update regeneration state based on progress
-        if (data.progress?.scene_progress?.status === 'completed' && isRegenerating) {
+        if ((data.progress?.scene_progress?.status === 'completed' || 
+             data.progress?.scene_progress?.status === 'regeneration_completed') && isRegenerating) {
           setIsRegenerating(false);
           setRegeneratingSceneId(undefined);
         }
@@ -396,6 +398,13 @@ export default function GeneratePage() {
   return (
     <PageTemplate>
       <div className="min-h-[calc(100vh-8rem)] flex flex-col">
+        {/* Compact Progress UI - Always visible when loading, hidden when video is ready */}
+        {loading && generationProgress && !generationProgress.video_ready && (
+          <div className="mb-4">
+            <CompactProgressUI progress={generationProgress} useSceneGeneration={useSceneGeneration} />
+          </div>
+        )}
+        
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start flex-1">
           {/* Left controls */}
           <div className="space-y-4">
@@ -455,27 +464,6 @@ export default function GeneratePage() {
               <div className="flex items-center gap-2 mb-2">
                 <Music className="h-4 w-4 text-emerald-400" />
                 <h3 className="text-sm font-medium text-white">Audio Settings</h3>
-              </div>
-              
-              <div>
-                <label className="text-sm text-white/70 mb-2 block">Generation Mode</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    className={`btn text-xs transition-all duration-200 ${useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
-                    onClick={() => setUseSceneGeneration(true)}
-                  >
-                    🎬 Scene-by-Scene
-                  </button>
-                  <button 
-                    className={`btn text-xs transition-all duration-200 ${!useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
-                    onClick={() => setUseSceneGeneration(false)}
-                  >
-                    ⚡ Batch Generation
-                  </button>
-                </div>
-                <p className="text-xs text-white/60 mt-1">
-                  {useSceneGeneration ? 'Generate and preview each scene individually' : 'Generate entire video at once'}
-                </p>
               </div>
               
               <div>
@@ -551,20 +539,37 @@ export default function GeneratePage() {
               </div>
             ) : (
               <div className="card h-[400px] flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {loading && generationProgress ? (
-                  <GenerationProgressView progress={generationProgress} />
-                ) : (
-                  <div className="text-center text-white/70">
-                    <Tv2 className="mx-auto h-10 w-10 mb-3" />
-                    <p className="text-sm">Your video will appear here</p>
-                  </div>
-                )}
+                <div className="text-center text-white/70">
+                  <Tv2 className="mx-auto h-10 w-10 mb-3" />
+                  <p className="text-sm">Your video will appear here</p>
+                </div>
               </div>
             )}
           </div>
 
           {/* Right controls */}
           <div className="card space-y-3 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div>
+              <label className="text-sm text-white/70 mb-2 block">Generation Mode</label>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button 
+                  className={`btn text-xs transition-all duration-200 ${useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
+                  onClick={() => setUseSceneGeneration(true)}
+                >
+                  🎬 Scene-by-Scene
+                </button>
+                <button 
+                  className={`btn text-xs transition-all duration-200 ${!useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
+                  onClick={() => setUseSceneGeneration(false)}
+                >
+                  ⚡ Batch Generation
+                </button>
+              </div>
+              <p className="text-xs text-white/60 mb-4">
+                {useSceneGeneration ? 'Generate and preview each scene individually' : 'Generate entire video at once'}
+              </p>
+            </div>
+
             <div>
               <label className="text-sm text-white/70 mb-2 block">Visual style</label>
               <div className="grid grid-cols-3 gap-2">
@@ -671,86 +676,127 @@ function StylePresetImage({ preset }: { preset: typeof stylePresets[0] }) {
   );
 }
 
-function GenerationProgressView({ progress }: { progress: GenerationProgress }) {
-  const steps = [
-    { key: 'extracting', icon: FileText, label: 'Extracting Content' },
-    { key: 'scenes', icon: Scissors, label: 'Creating Scenes' },
-    { key: 'images', icon: Palette, label: 'Generating Images' },
-    { key: 'audio', icon: Music, label: 'Creating Audio' },
-    { key: 'video', icon: Tv2, label: 'Assembling Video' }
+
+
+// Compact Progress Component
+function CompactProgressUI({ progress, useSceneGeneration }: { progress: GenerationProgress; useSceneGeneration: boolean }) {
+  const getCurrentSceneInfo = () => {
+    const currentScene = progress.current_scene || progress.scene_progress?.current || 1;
+    const totalScenes = progress.total_scenes || progress.scene_progress?.total || 1;
+    const subStep = progress.sub_step || progress.scene_progress?.status || '';
+    
+    let sceneStepLabel = '';
+    switch (subStep) {
+      case 'starting':
+      case 'generating_image':
+        sceneStepLabel = 'Image';
+        break;
+      case 'generating_audio':
+        sceneStepLabel = 'Narration';
+        break;
+      case 'creating_video':
+      case 'assembling':
+        sceneStepLabel = 'Assembly';
+        break;
+      default:
+        sceneStepLabel = 'Image';
+    }
+    
+    return { currentScene, totalScenes, sceneStepLabel };
+  };
+
+  const steps = useSceneGeneration ? [
+    { key: 'extracting', label: 'Extracting Text', icon: FileText },
+    { key: 'scenes', label: 'Scenes Direction', icon: Film }
+  ] : [
+    { key: 'extracting', label: 'Extracting', icon: FileText },
+    { key: 'images', label: 'Images', icon: Image },
+    { key: 'audio', label: 'Audio', icon: Volume2 },
+    { key: 'video', label: 'Video', icon: Video }
   ];
 
-  const currentStepIndex = steps.findIndex(s => s.key === progress.step);
+  const getStepStatus = (stepKey: string) => {
+    if (useSceneGeneration) {
+      // For scene generation, handle the flow differently
+      if (progress.step === 'extracting' && stepKey === 'extracting') return 'current';
+      if (progress.step === 'scenes' && stepKey === 'scenes') return 'current';
+      if (progress.step === 'extracting' && stepKey === 'scenes') return 'pending';
+      if ((progress.step === 'images' || progress.step === 'audio' || progress.step === 'video' || progress.step === 'generating_scenes') && stepKey === 'extracting') return 'completed';
+      if ((progress.step === 'images' || progress.step === 'audio' || progress.step === 'video' || progress.step === 'generating_scenes') && stepKey === 'scenes') return 'completed';
+    } else {
+      // For batch generation, use the original logic
+      if (progress.step === stepKey) return 'current';
+      
+      const stepOrder = ['extracting', 'images', 'audio', 'video'];
+      const currentIndex = stepOrder.indexOf(progress.step);
+      const stepIndex = stepOrder.indexOf(stepKey);
+      
+      return stepIndex < currentIndex ? 'completed' : 'pending';
+    }
+    
+    return 'pending';
+  };
+
+  const { currentScene, totalScenes, sceneStepLabel } = getCurrentSceneInfo();
+  const progressPercentage = Math.round((progress.progress || 0));
 
   return (
-    <div className="w-full max-w-md mx-auto p-6">
-      <div className="text-center mb-6">
-        <div className="inline-flex items-center gap-2 text-emerald-400 mb-2">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm font-medium">Generating Video</span>
-        </div>
-        <p className="text-xs text-white/70">{progress.message}</p>
+    <div className="bg-white/5 border border-white/15 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-white">Generation Progress</h3>
+        <span className="text-xs text-white/60">{progressPercentage}%</span>
       </div>
-
-      {/* Progress Steps */}
-      <div className="space-y-3 mb-6">
+      
+      {/* Compact Steps */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         {steps.map((step, index) => {
+          const status = getStepStatus(step.key);
           const Icon = step.icon;
-          const isActive = index === currentStepIndex;
-          const isCompleted = index < currentStepIndex;
-
+          
           return (
-            <div key={step.key} className={`flex items-center gap-3 p-2 rounded-lg transition-all ${isActive ? 'bg-emerald-400/10 border border-emerald-400/20' :
-                isCompleted ? 'bg-white/5' : 'opacity-50'
+            <React.Fragment key={step.key}>
+              <div className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs ${
+                status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                status === 'current' ? 'bg-blue-500/20 text-blue-400' :
+                'bg-white/5 text-white/40'
               }`}>
-              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isCompleted ? 'bg-emerald-400 text-emerald-950' :
-                  isActive ? 'bg-emerald-400/20 text-emerald-400' : 'bg-white/10 text-white/50'
-                }`}>
-                {isCompleted ? <CheckCircle className="h-4 w-4" /> :
-                  isActive ? <Icon className="h-4 w-4 animate-pulse" /> :
-                    <Icon className="h-4 w-4" />}
+                <Icon className="h-3 w-3" />
+                <span>{step.label}</span>
+                {status === 'current' && <div className="w-1 h-1 bg-current rounded-full animate-pulse ml-1" />}
               </div>
-              <span className={`text-sm ${isActive ? 'text-white font-medium' : isCompleted ? 'text-white/80' : 'text-white/50'}`}>
-                {step.label}
-              </span>
-              {isActive && (
-                <div className="ml-auto">
-                  <Clock className="h-4 w-4 text-emerald-400 animate-pulse" />
-                </div>
+              {index < steps.length - 1 && (
+                <div className={`w-2 h-px ${
+                  status === 'completed' ? 'bg-green-400/40' : 'bg-white/20'
+                }`} />
               )}
-            </div>
+            </React.Fragment>
           );
         })}
+        
+        {/* Scene-by-scene progress for scene generation */}
+        {useSceneGeneration && (progress.step === 'images' || progress.step === 'audio' || progress.step === 'video' || progress.step === 'generating_scenes') && (
+          <>
+            <div className="w-2 h-px bg-green-400/40" />
+            <div className="bg-blue-500/20 text-blue-400 flex items-center gap-1 px-2 py-1 rounded-md text-xs">
+              <span>Scene {currentScene}/{totalScenes}: {sceneStepLabel}</span>
+              <div className="w-1 h-1 bg-current rounded-full animate-pulse ml-1" />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Progress Bar */}
-      <div className="w-full bg-white/10 rounded-full h-2 mb-4">
-        <div
-          className="bg-gradient-to-r from-emerald-400 to-blue-400 h-2 rounded-full transition-all duration-500"
-          style={{ width: `${progress.progress}%` }}
+      <div className="w-full bg-white/10 rounded-full h-1.5">
+        <div 
+          className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-300"
+          style={{ width: `${progressPercentage}%` }}
         />
       </div>
-
-      {/* Generated Images Preview */}
-      {progress.generatedImages && progress.generatedImages.length > 0 && (
-        <div>
-          <p className="text-xs text-white/70 mb-2">Generated Images:</p>
-          <div className="grid grid-cols-2 gap-2">
-            {progress.generatedImages.slice(0, 4).map((imageUrl, index) => (
-              <div key={index} className="aspect-square rounded-lg overflow-hidden border border-white/20">
-                <img
-                  src={imageUrl}
-                  alt={`Generated image ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-          {progress.generatedImages.length > 4 && (
-            <p className="text-xs text-white/50 mt-1 text-center">
-              +{progress.generatedImages.length - 4} more images
-            </p>
-          )}
+      
+      {/* Current Message */}
+      {progress.message && (
+        <div className="text-xs text-white/70 mt-2 text-center">
+          {progress.message}
         </div>
       )}
     </div>
