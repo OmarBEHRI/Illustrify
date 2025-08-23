@@ -15,21 +15,17 @@ interface ImageGenResult {
 // Generate image using Flask server
 async function generateImageWithFlask(prompt: string, seed?: number, steps: number = 20): Promise<Buffer | null> {
   try {
-    const response = await fetch(`${FLASK_SERVER}/generate-flux`, {
+    const response = await fetch(`${FLASK_SERVER}/generate-image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        positive_prompt: prompt,
+        prompt: prompt,
         negative_prompt: "blurry, low quality, distorted",
         steps: steps,
         cfg: 1.0,
         seed: seed || Math.floor(Math.random() * 4294967296),
         width: 1024,
-        height: 1024,
-        unet_model: "flux1-krea-dev-Q5_1.gguf",
-        clip_model1: "clip_l.safetensors",
-        clip_model2: "t5xxl_fp8_e4m3fn.safetensors",
-        vae_model: "ae.safetensors"
+        height: 1024
       }),
     });
 
@@ -40,12 +36,10 @@ async function generateImageWithFlask(prompt: string, seed?: number, steps: numb
 
     const data = await response.json();
     
-    if (data.success && data.image_path) {
-      // Download the generated image from Flask server
-      const imageResponse = await fetch(`${FLASK_SERVER}/image/${data.image_path}`);
-      if (imageResponse.ok) {
-        return Buffer.from(await imageResponse.arrayBuffer());
-      }
+    if (data.success && data.images && data.images.length > 0) {
+      // Convert base64 image to Buffer
+      const base64Image = data.images[0].image;
+      return Buffer.from(base64Image, 'base64');
     }
     
     return null;

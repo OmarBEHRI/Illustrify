@@ -1,8 +1,27 @@
 import { NextResponse } from 'next/server';
 import { saveBufferToPublic } from '@/server/storage';
+import { pbHelpers } from '@/lib/pocketbase';
+import pb from '@/lib/pocketbase';
+import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
   try {
+    // Get user authentication
+    const cookieStore = cookies();
+    const authCookie = cookieStore.get('pb_auth');
+    
+    if (!authCookie) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Set auth in PocketBase
+    pb.authStore.loadFromCookie(authCookie.value);
+    const user = pb.authStore.model;
+    
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Use the most common public sample voice unless overridden
     const { text, voiceId = '21m00Tcm4TlvDq8ikWAM', modelId = 'eleven_multilingual_v2' } = await req.json();
     if (!text || typeof text !== 'string' || !text.trim()) {
@@ -38,6 +57,20 @@ export async function POST(req: Request) {
     const arrayBuf = await res.arrayBuffer();
     const buffer = Buffer.from(arrayBuf);
     const saved = await saveBufferToPublic(buffer, 'audio', 'mp3');
+    
+    // Save to PocketBase audio collection
+    try {
+      await pbHelpers.saveAudio({
+        user: user.id,
+        transcript: text,
+        audio_file: saved.filename,
+        voice: voiceId
+      });
+    } catch (pbError) {
+      console.error('Failed to save audio to PocketBase:', pbError);
+      // Continue anyway, don't fail the request
+    }
+    
     return NextResponse.json({ success: true, url: saved.url });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Unknown error' }, { status: 500 });

@@ -67,6 +67,26 @@ export interface CreditTransaction {
   created: string;
 }
 
+export interface Image {
+  id: string;
+  prompt: string;
+  image_file: string;
+  user: string;
+  type: 'imported' | 'generation' | 'edit';
+  created: string;
+  updated: string;
+}
+
+export interface Audio {
+  id: string;
+  transcript: string;
+  audio_file: string;
+  user: string;
+  voice: string;
+  created: string;
+  updated: string;
+}
+
 // Create PocketBase instance
 const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090');
 
@@ -247,10 +267,66 @@ export const pbHelpers = {
   },
 
   async getJobScenes(jobId: string): Promise<Scene[]> {
-    const records = await pb.collection('scenes').getFullList({
+    const scenes = await pb.collection('scenes').getFullList({
       filter: `job = "${jobId}"`,
-      sort: 'scene_order',
+      sort: 'scene_order'
     });
-    return records as Scene[];
+    return scenes as Scene[];
+  },
+
+  // Image helpers
+  async saveImage(userId: string, prompt: string, imageFile: File, type: 'generation' | 'edit'): Promise<Image> {
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    formData.append('image_file', imageFile);
+    formData.append('user', userId);
+    formData.append('type', type);
+    
+    const record = await pb.collection('image').create(formData);
+    return record as Image;
+  },
+
+  async getUserImages(userId: string): Promise<Image[]> {
+    const images = await pb.collection('image').getFullList({
+      filter: `user = "${userId}" && (type = "generation" || type = "edit") && image_file != ""`,
+      sort: '-created'
+    });
+    return images as Image[];
+  },
+
+  async getAllImages(): Promise<Image[]> {
+    const images = await pb.collection('image').getFullList({
+      filter: `(type = "generation" || type = "edit") && image_file != ""`,
+      sort: '-created'
+    });
+    return images as Image[];
+  },
+
+  // Audio helpers
+  async saveAudio(userId: string, transcript: string, audioFile: File, voice: string): Promise<Audio> {
+    const formData = new FormData();
+    formData.append('transcript', transcript);
+    formData.append('audio_file', audioFile);
+    formData.append('user', userId);
+    formData.append('voice', voice);
+    
+    const record = await pb.collection('audio').create(formData);
+    return record as Audio;
+  },
+
+  async getUserAudio(userId: string): Promise<Audio[]> {
+    const audio = await pb.collection('audio').getFullList({
+      filter: `user = "${userId}" && audio_file != ""`,
+      sort: '-created'
+    });
+    return audio as Audio[];
+  },
+
+  async getAllAudio(): Promise<Audio[]> {
+    const audio = await pb.collection('audio').getFullList({
+      filter: `audio_file != ""`,
+      sort: '-created'
+    });
+    return audio as Audio[];
   },
 };

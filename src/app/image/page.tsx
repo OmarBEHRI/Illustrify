@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Sparkles, Download, RefreshCw, Image as ImageIcon, Settings, X, Maximize2 } from 'lucide-react';
 import PageTemplate from '@/components/PageTemplate';
 import { useAuth } from '@/contexts/AuthContext';
+import pb, { pbHelpers, Image } from '@/lib/pocketbase';
 
 interface ChatMessage {
   type: 'user' | 'assistant';
@@ -85,6 +86,7 @@ export default function ImageGenerationPage() {
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [imageHistory, setImageHistory] = useState<Image[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showAspectRatioDropdown, setShowAspectRatioDropdown] = useState(false);
   const [showQualityDropdown, setShowQualityDropdown] = useState(false);
@@ -92,6 +94,31 @@ export default function ImageGenerationPage() {
   const selectedAspectRatio = aspectRatios.find(ar => ar.value === aspectRatio)!;
   const selectedQuality = qualityOptions.find(q => q.value === quality)!;
   const selectedStylePreset = stylePresets.find(s => s.id === selectedStyle);
+
+  // Fetch image history from PocketBase
+  useEffect(() => {
+    const fetchImageHistory = async () => {
+      if (user) {
+        try {
+          const userImages = await pbHelpers.getUserImages(user.id);
+          const filteredImages = userImages.filter(image => 
+            image.image_file && 
+            (image.type === 'generation' || image.type === 'edit')
+          );
+          setImageHistory(filteredImages);
+        } catch (error) {
+          console.error('Error fetching image history:', error);
+        }
+      }
+    };
+
+    fetchImageHistory();
+  }, [user]);
+
+  // Helper function to get file URL
+  const getFileUrl = (record: Image, filename: string) => {
+    return pb.files.getUrl(record, filename);
+  };
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -113,9 +140,36 @@ export default function ImageGenerationPage() {
         ? `${prompt}, ${selectedStylePreset.prompt}`
         : prompt;
 
+      // Debug logs
+      console.log('🔐 Auth Debug - pb.authStore.isValid:', pb.authStore.isValid);
+      console.log('🔐 Auth Debug - pb.authStore.token:', pb.authStore.token ? 'Token exists' : 'No token');
+      console.log('🔐 Auth Debug - pb.authStore.model:', pb.authStore.model ? 'User model exists' : 'No user model');
+
+      // Ensure pb_auth cookie is set for the API route (server reads cookies)
+      try {
+        const cookieStr = pb.authStore.exportToCookie({
+          httpOnly: false,
+          secure: false,
+          sameSite: 'Lax',
+          path: '/',
+        } as any);
+        if (cookieStr) {
+          document.cookie = cookieStr;
+          console.log('🔐 Auth Debug - pb_auth cookie exported to document');
+        }
+      } catch (e) {
+        console.warn('🔐 Auth Debug - Failed to export pb_auth cookie:', e);
+      }
+
+      console.log('🖼️ Image Generation - Starting request with prompt:', finalPrompt.substring(0, 50) + '...');
+
       const response = await fetch('/api/generate/image', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${pb.authStore.token}`
+        },
+        credentials: 'same-origin',
         body: JSON.stringify({
           prompt: finalPrompt,
           steps: selectedQuality.steps,
@@ -123,6 +177,9 @@ export default function ImageGenerationPage() {
           height: selectedAspectRatio.height
         })
       });
+
+      console.log('🖼️ Image Generation - Response status:', response.status);
+      console.log('🖼️ Image Generation - Response ok:', response.ok);
 
       const data = await response.json();
 
@@ -137,6 +194,20 @@ export default function ImageGenerationPage() {
           timestamp: new Date()
         };
         setChatHistory(prev => [...prev, assistantMessage]);
+        
+        // Refresh image history from PocketBase
+        if (user) {
+          try {
+            const userImages = await pbHelpers.getUserImages(user.id);
+            const filteredImages = userImages.filter(image => 
+              image.image_file && 
+              (image.type === 'generation' || image.type === 'edit')
+            );
+            setImageHistory(filteredImages);
+          } catch (error) {
+            console.error('Error refreshing image history:', error);
+          }
+        }
       } else {
         throw new Error(data.error || 'Failed to generate image');
       }
@@ -252,23 +323,22 @@ export default function ImageGenerationPage() {
             </div>
             
             <div className="space-y-3">
-              {chatHistory.length === 0 ? (
+              {imageHistory.length === 0 ? (
                 <div className="text-center text-white/40 text-sm mt-8">
                   <p>Generation history will appear here</p>
                 </div>
               ) : (
-                chatHistory.slice().reverse().map((message, index) => (
-                  message.imageUrl && (
-                    <div key={index} className="group cursor-pointer" onClick={() => setGeneratedImage(message.imageUrl!)}>
-                      <img 
-                        src={message.imageUrl} 
-                        alt="Generated image" 
-                        className="w-full aspect-square object-cover rounded-lg border border-white/10 group-hover:border-emerald-400/50 transition-all group-hover:scale-105"
-                        style={{ maxHeight: '200px' }}
-                      />
-                      <p className="text-xs text-white/60 mt-1 truncate">{message.content}</p>
-                    </div>
-                  )
+                imageHistory.slice().reverse().map((image) => (
+                  <div key={image.id} className="group cursor-pointer" onClick={() => setGeneratedImage(getFileUrl(image, image.image_file))}>
+                    <img 
+                      src={getFileUrl(image, image.image_file)} 
+                      alt={image.prompt} 
+                      className="w-full aspect-square object-cover rounded-lg border border-white/10 group-hover:border-emerald-400/50 transition-all group-hover:scale-105"
+                      style={{ maxHeight: '200px' }}
+                    />
+                    <p className="text-xs text-white/60 mt-1 truncate">{image.prompt}</p>
+                    <p className="text-xs text-white/40 mt-0.5">{new Date(image.created).toLocaleDateString()}</p>
+                  </div>
                 ))
               )}
             </div>

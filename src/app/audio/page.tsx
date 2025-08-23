@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Volume2, Download, Play, Pause, Mic, Settings, Sparkles } from 'lucide-react';
 import PageTemplate from '@/components/PageTemplate';
 import { useAuth } from '@/contexts/AuthContext';
-import pb from '@/lib/pocketbase';
+import pb, { pbHelpers } from '@/lib/pocketbase';
+// TODO: Fix Audio import issue
+// import { Audio } from '@/lib/pocketbase';
+type Audio = any;
 
 // Voice options for Kokoro TTS
 const voiceOptions = [
@@ -97,12 +100,36 @@ export default function AudioGenerationPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioHistory, setAudioHistory] = useState<AudioMessage[]>([]);
+  const [pbAudioHistory, setPbAudioHistory] = useState<Audio[]>([]);
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   const [playingGenerated, setPlayingGenerated] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const generatedAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const selectedVoiceData = voiceOptions.find(v => v.id === selectedVoice)!;
+
+  // Fetch audio history from PocketBase
+  useEffect(() => {
+    const fetchAudioHistory = async () => {
+      if (user) {
+        try {
+          const userAudio = await pbHelpers.getUserAudio(user.id);
+          // Filter for audio with non-empty files
+          const filteredAudio = userAudio.filter(audio => audio.audio_file);
+          setPbAudioHistory(filteredAudio);
+        } catch (error) {
+          console.error('Error fetching audio history:', error);
+        }
+      }
+    };
+
+    fetchAudioHistory();
+  }, [user]);
+
+  // Helper function to get file URL
+  const getFileUrl = (record: Audio, filename: string) => {
+    return pb.files.getUrl(record, filename);
+  };
 
   const handleGenerate = async () => {
     if (!text.trim()) return;
@@ -145,6 +172,17 @@ export default function AudioGenerationPage() {
           timestamp: new Date()
         };
         setAudioHistory(prev => [...prev, assistantMessage]);
+        
+        // Refresh audio history from PocketBase
+        if (user) {
+          try {
+            const userAudio = await pbHelpers.getUserAudio(user.id);
+            const filteredAudio = userAudio.filter(audio => audio.audio_file);
+            setPbAudioHistory(filteredAudio);
+          } catch (error) {
+            console.error('Error refreshing audio history:', error);
+          }
+        }
       } else {
         const errorData = await response.json().catch(() => ({ error: 'Failed to generate audio' }));
         throw new Error(errorData.error || 'Failed to generate audio');
@@ -250,52 +288,90 @@ export default function AudioGenerationPage() {
             </div>
             
             <div className="flex-1 overflow-y-auto space-y-3">
-              {audioHistory.length === 0 ? (
+              {/* Show PocketBase history first */}
+              {pbAudioHistory.length === 0 && audioHistory.length === 0 ? (
                 <div className="text-center text-white/50 mt-8">
                   <Volume2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
                   <p className="text-sm">Generated audio will appear here</p>
                 </div>
               ) : (
-                audioHistory.map((message, index) => (
-                  <div key={index} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-xl p-3 text-sm ${
-                      message.type === 'user' 
-                        ? 'bg-emerald-500/20 border border-emerald-400/30' 
-                        : 'bg-white/5 border border-white/10'
-                    }`}>
-                      {message.content && <p>{message.content}</p>}
-                      {message.audioUrl && (
-                        <div className={`${message.content ? 'mt-2' : ''} space-y-2`}>
-                          <div className="flex items-center gap-1 text-xs text-white/60">
-                            <Mic className="h-3 w-3" />
-                            {message.voice}
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => playGeneratedAudio(message.audioUrl!)}
-                              className="text-xs px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 rounded-md flex items-center gap-2 transition-colors font-medium"
-                            >
-                              {playingGenerated === message.audioUrl ? (
-                                <Pause className="h-4 w-4" />
-                              ) : (
-                                <Play className="h-4 w-4" />
-                              )}
-                              {playingGenerated === message.audioUrl ? 'Pause' : 'Play Audio'}
-                            </button>
-                            <a 
-                              href={message.audioUrl} 
-                              download 
-                              className="text-xs px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md flex items-center gap-2 transition-colors font-medium"
-                            >
-                              <Download className="h-4 w-4" />
-                              Download
-                            </a>
-                          </div>
+                <>
+                  {/* PocketBase Audio History */}
+                  {pbAudioHistory.slice().reverse().map((audio) => (
+                    <div key={audio.id} className="bg-white/5 border border-white/10 rounded-xl p-3">
+                      <div className="space-y-2">
+                        <p className="text-sm text-white/80">{audio.transcript}</p>
+                        <div className="flex items-center gap-1 text-xs text-white/60">
+                          <Mic className="h-3 w-3" />
+                          {audio.voice} • {new Date(audio.created).toLocaleDateString()}
                         </div>
-                      )}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => playGeneratedAudio(getFileUrl(audio, audio.audio_file))}
+                            className="text-xs px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 rounded-md flex items-center gap-2 transition-colors font-medium"
+                          >
+                            {playingGenerated === getFileUrl(audio, audio.audio_file) ? (
+                              <Pause className="h-4 w-4" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+                            {playingGenerated === getFileUrl(audio, audio.audio_file) ? 'Pause' : 'Play Audio'}
+                          </button>
+                          <a 
+                            href={getFileUrl(audio, audio.audio_file)} 
+                            download 
+                            className="text-xs px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md flex items-center gap-2 transition-colors font-medium"
+                          >
+                            <Download className="h-4 w-4" />
+                            Download
+                          </a>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                  
+                  {/* Local Session History */}
+                  {audioHistory.map((message, index) => (
+                    <div key={`local-${index}`} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] rounded-xl p-3 text-sm ${
+                        message.type === 'user' 
+                          ? 'bg-emerald-500/20 border border-emerald-400/30' 
+                          : 'bg-white/5 border border-white/10'
+                      }`}>
+                        {message.content && <p>{message.content}</p>}
+                        {message.audioUrl && (
+                          <div className={`${message.content ? 'mt-2' : ''} space-y-2`}>
+                            <div className="flex items-center gap-1 text-xs text-white/60">
+                              <Mic className="h-3 w-3" />
+                              {message.voice}
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => playGeneratedAudio(message.audioUrl!)}
+                                className="text-xs px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 rounded-md flex items-center gap-2 transition-colors font-medium"
+                              >
+                                {playingGenerated === message.audioUrl ? (
+                                  <Pause className="h-4 w-4" />
+                                ) : (
+                                  <Play className="h-4 w-4" />
+                                )}
+                                {playingGenerated === message.audioUrl ? 'Pause' : 'Play Audio'}
+                              </button>
+                              <a 
+                                href={message.audioUrl} 
+                                download 
+                                className="text-xs px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md flex items-center gap-2 transition-colors font-medium"
+                              >
+                                <Download className="h-4 w-4" />
+                                Download
+                              </a>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </>
               )}
             </div>
           </div>

@@ -124,6 +124,7 @@ export default function GeneratePage() {
   const [ttsEngine, setTtsEngine] = useState<'kokoro' | 'elevenlabs'>('kokoro');
   const [selectedVoice, setSelectedVoice] = useState('af_heart');
   const [showVoiceDropdown, setShowVoiceDropdown] = useState(false);
+  const [showGenerationModeDropdown, setShowGenerationModeDropdown] = useState(false);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [availableVoices, setAvailableVoices] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -168,14 +169,18 @@ export default function GeneratePage() {
     fetchVoices();
   }, [ttsEngine]);
 
-  // Close voice dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       const voiceDropdown = target.closest('[data-dropdown="voice"]');
+      const generationModeDropdown = target.closest('[data-dropdown="generation-mode"]');
       
       if (!voiceDropdown) {
         setShowVoiceDropdown(false);
+      }
+      if (!generationModeDropdown) {
+        setShowGenerationModeDropdown(false);
       }
     };
 
@@ -440,7 +445,8 @@ export default function GeneratePage() {
           </div>
         )}
         
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start flex-1">
+        <div className="flex-1 space-y-4">
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           {/* Left controls */}
           <div className="space-y-4">
             {/* Input Selection */}
@@ -650,30 +656,10 @@ export default function GeneratePage() {
 
           {/* Right controls */}
           <div className="card space-y-3 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div>
-              <label className="text-sm text-white/70 mb-2 block">Generation Mode</label>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <button 
-                  className={`btn text-xs transition-all duration-200 ${useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
-                  onClick={() => setUseSceneGeneration(true)}
-                >
-                  🎬 Scene-by-Scene
-                </button>
-                <button 
-                  className={`btn text-xs transition-all duration-200 ${!useSceneGeneration ? 'bg-emerald-400/90 text-emerald-950 shadow-lg shadow-emerald-400/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/15'}`} 
-                  onClick={() => setUseSceneGeneration(false)}
-                >
-                  ⚡ Batch Generation
-                </button>
-              </div>
-              <p className="text-xs text-white/60 mb-4">
-                {useSceneGeneration ? 'Generate and preview each scene individually' : 'Generate entire video at once'}
-              </p>
-            </div>
 
             <div>
               <label className="text-sm text-white/70 mb-2 block">Visual style</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-1.5">
                 {stylePresets.map((preset) => (
                   <button
                     key={preset.id}
@@ -681,14 +667,14 @@ export default function GeneratePage() {
                       setSelectedStylePreset(preset.id);
                       setStyle(preset.prompt);
                     }}
-                    className={`relative overflow-hidden rounded-lg border-2 transition-all aspect-square ${selectedStylePreset === preset.id
+                    className={`relative overflow-hidden rounded-md border-2 transition-all aspect-square ${selectedStylePreset === preset.id
                       ? 'border-emerald-400 bg-emerald-400/10'
                       : 'border-white/20 hover:border-white/40'
                       }`}
                   >
                     <StylePresetImage preset={preset} />
-                    <div className="absolute bottom-0 left-0 right-0 p-1 bg-gradient-to-t from-black/90 to-transparent">
-                      <p className="text-[10px] text-white font-medium leading-tight">{preset.name}</p>
+                    <div className="absolute bottom-0 left-0 right-0 p-0.5 bg-gradient-to-t from-black/90 to-transparent">
+                      <p className="text-[8px] text-white font-medium leading-tight">{preset.name}</p>
                     </div>
                   </button>
                 ))}
@@ -697,18 +683,18 @@ export default function GeneratePage() {
                     setSelectedStylePreset('other');
                     setStyle(customStyle);
                   }}
-                  className={`relative overflow-hidden rounded-lg border-2 transition-all flex flex-col items-center justify-center aspect-square ${selectedStylePreset === 'other'
+                  className={`relative overflow-hidden rounded-md border-2 transition-all flex flex-col items-center justify-center aspect-square ${selectedStylePreset === 'other'
                     ? 'border-emerald-400 bg-emerald-400/10'
                     : 'border-white/20 hover:border-white/40'
                     }`}
                 >
-                  <div className="text-lg mb-1">✏️</div>
-                  <p className="text-[10px] text-white font-medium">Other</p>
+                  <div className="text-sm mb-0.5">✏️</div>
+                  <p className="text-[8px] text-white font-medium">Other</p>
                 </button>
               </div>
               {selectedStylePreset === 'other' && (
                 <textarea
-                  className="input mt-2 h-16 resize-none text-sm"
+                  className="input mt-2 h-12 resize-none text-xs"
                   placeholder="Describe your custom style..."
                   value={customStyle}
                   onChange={(e) => {
@@ -731,9 +717,6 @@ export default function GeneratePage() {
               <p className="text-xs text-white/70 mt-1">Cost: {cost} credits</p>
             </div>
 
-            <button className="btn-accent w-full text-sm" onClick={onGenerate} disabled={loading || !story.trim()}>
-              {loading ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Generating...</span> : 'Generate video'}
-            </button>
             {error && <p className="text-xs text-red-300">{error}</p>}
             {videoUrl && (
               <div className="flex gap-2">
@@ -743,6 +726,76 @@ export default function GeneratePage() {
             )}
           </div>
         </section>
+
+        {/* Generate Controls - Below center block */}
+        {!loading && (
+          <div className="flex items-center gap-4 justify-center">
+            {/* Generate Button - Bigger */}
+            <button className="btn-accent px-8 py-3 text-base font-semibold" onClick={onGenerate} disabled={loading || !story.trim()}>
+              <span className="inline-flex items-center gap-2">
+                <Video className="h-5 w-5" />
+                Generate Video
+              </span>
+            </button>
+            
+            {/* Generation Mode Dropdown */}
+            <div className="relative" data-dropdown="generation-mode">
+              <button 
+                className="btn bg-white/10 text-white border border-white/20 hover:bg-white/15 px-4 py-3 text-sm transition-all duration-200"
+                onClick={() => setShowGenerationModeDropdown(!showGenerationModeDropdown)}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {useSceneGeneration ? '🎬 Scene-by-Scene' : '⚡ Batch Generation'}
+                  <svg className={`w-4 h-4 transition-transform ${showGenerationModeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </span>
+              </button>
+              
+              {showGenerationModeDropdown && (
+                <div className="absolute top-full mt-1 left-0 bg-black/90 backdrop-blur-sm border border-white/20 rounded-lg shadow-xl z-50 min-w-[200px]">
+                  <div className="p-1">
+                    <button
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        useSceneGeneration ? 'bg-emerald-400/20 text-emerald-300' : 'text-white hover:bg-white/10'
+                      }`}
+                      onClick={() => {
+                        setUseSceneGeneration(true);
+                        setShowGenerationModeDropdown(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>🎬</span>
+                        <div>
+                          <div className="font-medium">Scene-by-Scene</div>
+                          <div className="text-xs text-white/60">Generate and preview each scene individually</div>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        !useSceneGeneration ? 'bg-emerald-400/20 text-emerald-300' : 'text-white hover:bg-white/10'
+                      }`}
+                      onClick={() => {
+                        setUseSceneGeneration(false);
+                        setShowGenerationModeDropdown(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>⚡</span>
+                        <div>
+                          <div className="font-medium">Batch Generation</div>
+                          <div className="text-xs text-white/60">Generate entire video at once</div>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        </div>
 
         {/* Gallery snippet - only show when not generating */}
         {!loading && <RecentGallerySnippet />}
