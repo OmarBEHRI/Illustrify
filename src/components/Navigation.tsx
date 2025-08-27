@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Film, User2, CreditCard, Plus, Image as ImageIcon, Volume2 } from 'lucide-react';
+import { Film, User2, CreditCard, Plus, Image as ImageIcon, Volume2, Play } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface NavigationProps {
@@ -43,6 +43,15 @@ export default function Navigation({ className = '' }: NavigationProps) {
             }`}
           >
             <ImageIcon className="h-4 w-4"/> Image
+          </Link>
+
+          <Link 
+            href="/animate" 
+            className={`font-semibold nav-link inline-flex items-center gap-2 hover:text-white transition-colors ${
+              isActive('/animate') ? 'text-white active' : 'text-white/70'
+            }`}
+          >
+            <Play className="h-4 w-4"/> Animate
           </Link>
 
           <Link 

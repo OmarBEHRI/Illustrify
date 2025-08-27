@@ -103,10 +103,17 @@ export default function AudioGenerationPage() {
   const [pbAudioHistory, setPbAudioHistory] = useState<Audio[]>([]);
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   const [playingGenerated, setPlayingGenerated] = useState<string | null>(null);
+  const [pageLoaded, setPageLoaded] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const generatedAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const selectedVoiceData = voiceOptions.find(v => v.id === selectedVoice)!;
+
+  // Page load animation
+  useEffect(() => {
+    const timer = setTimeout(() => setPageLoaded(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Fetch audio history from PocketBase
   useEffect(() => {
@@ -269,7 +276,9 @@ export default function AudioGenerationPage() {
 
   return (
     <PageTemplate>
-      <div className="flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className={`flex flex-col transition-all duration-700 ease-out ${
+        pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`} style={{ height: 'calc(100vh - 120px)' }}>
         {/* Header */}
         <div className="flex-shrink-0 pb-3">
           <h1 className="text-2xl font-bold flex items-center gap-3">

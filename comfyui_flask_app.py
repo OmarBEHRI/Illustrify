@@ -122,7 +122,7 @@ class ComfyUIClient:
             return json.loads(response.read())
     
     def execute_workflow(self, workflow):
-        """Execute a workflow and return the generated images"""
+        """Execute a workflow and return the generated images and videos"""
         prompt_id = str(uuid.uuid4())
         
         # Connect to websocket
@@ -148,17 +148,38 @@ class ComfyUIClient:
             
             # Get the results from history
             history = self.get_history(prompt_id)[prompt_id]
+            logger.info(f"Workflow execution completed. History keys: {list(history.keys())}")
+            logger.info(f"Output nodes: {list(history['outputs'].keys())}")
             
-            # Extract images from the results
+            # Extract images and videos from the results
             for node_id in history['outputs']:
                 node_output = history['outputs'][node_id]
+                logger.info(f"Node {node_id} output keys: {list(node_output.keys())}")
+                
+                # Handle images, videos, and gifs
                 if 'images' in node_output:
                     images_output = []
                     for image in node_output['images']:
+                        logger.info(f"Processing image: {image['filename']} from {image['subfolder']}")
                         image_data = self.get_image(image['filename'], image['subfolder'], image['type'])
                         images_output.append(image_data)
                     output_images[node_id] = images_output
+                elif 'videos' in node_output:
+                    videos_output = []
+                    for video in node_output['videos']:
+                        logger.info(f"Processing video: {video['filename']} from {video['subfolder']}")
+                        video_data = self.get_image(video['filename'], video['subfolder'], video['type'])
+                        videos_output.append(video_data)
+                    output_images[node_id] = videos_output
+                elif 'gifs' in node_output:
+                    gifs_output = []
+                    for gif in node_output['gifs']:
+                        logger.info(f"Processing gif: {gif['filename']} from {gif['subfolder']}")
+                        gif_data = self.get_image(gif['filename'], gif['subfolder'], gif['type'])
+                        gifs_output.append(gif_data)
+                    output_images[node_id] = gifs_output
             
+            logger.info(f"Final output_images keys: {list(output_images.keys())}")
             return output_images
             
         finally:
@@ -170,15 +191,17 @@ comfy_client = ComfyUIClient()
 # Load workflow templates
 def load_workflow_template(filename):
     """Load workflow template from JSON file"""
-    with open(filename, 'r') as f:
+    with open(filename, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 # Load the workflow templates
 FLUX_WORKFLOW_PATH = "c:\\Users\\Asus\\Desktop\\Illustrify\\image-gen-worflows\\Flux-KREA-Image-Gen.json"
 EDIT_WORKFLOW_PATH = "c:\\Users\\Asus\\Desktop\\Illustrify\\image-gen-worflows\\Image-Edit-Workflow.json"
+I2V_WORKFLOW_PATH = "c:\\Users\\Asus\\Desktop\\Illustrify\\image-gen-worflows\\Image-To-Video.json"
 
 flux_workflow_template = load_workflow_template(FLUX_WORKFLOW_PATH)
 edit_workflow_template = load_workflow_template(EDIT_WORKFLOW_PATH)
+i2v_workflow_template = load_workflow_template(I2V_WORKFLOW_PATH)
 
 @app.route('/generate-image', methods=['POST'])
 @handle_errors
@@ -243,6 +266,168 @@ def generate_image():
                 'steps': steps,
                 'cfg': cfg,
                 'seed': seed
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/image-to-video', methods=['POST'])
+@handle_errors
+def image_to_video():
+    """Generate video from image using Image-To-Video workflow"""
+    try:
+        # Handle both JSON and form data
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Handle file upload
+            if 'image' not in request.files:
+                return jsonify({'success': False, 'error': 'No image file provided'}), 400
+            
+            image_file = request.files['image']
+            prompt = request.form.get('prompt', '')
+            negative_prompt = request.form.get('negative_prompt', '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走')
+            width = int(request.form.get('width', 480))
+            height = int(request.form.get('height', 832))
+            length = int(request.form.get('length', 81))
+            steps = int(request.form.get('steps', 6))
+            cfg = float(request.form.get('cfg', 1))
+            seed = int(request.form.get('seed', random.randint(1, 2**32)))
+            frame_rate = int(request.form.get('frame_rate', 32))
+            
+            # Read image data
+            image_data = image_file.read()
+            filename = image_file.filename or 'uploaded_image.jpg'
+            
+        else:
+            # Handle base64 encoded image in JSON
+            data = request.get_json()
+            
+            if 'image' not in data:
+                return jsonify({'success': False, 'error': 'No image data provided'}), 400
+            
+            # Decode base64 image
+            try:
+                image_b64 = data['image']
+                if ',' in image_b64:  # Remove data URL prefix if present
+                    image_b64 = image_b64.split(',')[1]
+                image_data = base64.b64decode(image_b64)
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'Invalid image data: {str(e)}'}), 400
+            
+            prompt = data.get('prompt', '')
+            negative_prompt = data.get('negative_prompt', '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走')
+            width = data.get('width', 480)
+            height = data.get('height', 832)
+            length = data.get('length', 81)
+            steps = data.get('steps', 6)
+            cfg = data.get('cfg', 1.0)
+            seed = data.get('seed', random.randint(1, 2**32))
+            frame_rate = data.get('frame_rate', 32)
+            filename = data.get('filename', 'uploaded_image.jpg')
+        
+        # Upload image to ComfyUI server
+        upload_result = comfy_client.upload_image(image_data, filename)
+        uploaded_filename = upload_result['name']
+        
+        # Create a copy of the workflow template
+        workflow = i2v_workflow_template.copy()
+        
+        # Modify workflow parameters
+        # Update the image input (node 91)
+        workflow["91"]["inputs"]["image"] = uploaded_filename
+        
+        # Update positive prompt (node 88)
+        workflow["88"]["inputs"]["text"] = prompt
+        
+        # Update negative prompt (node 86)
+        workflow["86"]["inputs"]["text"] = negative_prompt
+        
+        # Update video dimensions and length (node 89)
+        workflow["89"]["inputs"]["width"] = width
+        workflow["89"]["inputs"]["height"] = height
+        workflow["89"]["inputs"]["length"] = length
+        
+        # Update sampling parameters (nodes 81 and 82)
+        workflow["81"]["inputs"]["noise_seed"] = seed
+        workflow["81"]["inputs"]["steps"] = steps
+        workflow["81"]["inputs"]["cfg"] = cfg
+        
+        workflow["82"]["inputs"]["noise_seed"] = seed + 1
+        workflow["82"]["inputs"]["steps"] = steps
+        workflow["82"]["inputs"]["cfg"] = cfg
+        
+        # Update video output settings (node 62)
+        workflow["62"]["inputs"]["frame_rate"] = frame_rate
+        
+        # Execute the workflow
+        logger.info(f"Executing image-to-video workflow with prompt: '{prompt}'")
+        output_images = comfy_client.execute_workflow(workflow)
+        
+        # Print detailed ComfyUI response for debugging
+        logger.info("=== COMFYUI RESPONSE DEBUG ===")
+        logger.info(f"Raw result type: {type(output_images)}")
+        logger.info(f"Raw result: {output_images}")
+        
+        if output_images:
+            logger.info(f"Result keys: {list(output_images.keys())}")
+            for key, value in output_images.items():
+                logger.info(f"Key '{key}': type={type(value)}, value={value}")
+                if isinstance(value, list):
+                    logger.info(f"  List length: {len(value)}")
+                    for i, item in enumerate(value):
+                        logger.info(f"    Item {i}: type={type(item)}, length={len(item) if hasattr(item, '__len__') else 'N/A'}")
+        logger.info("=== END COMFYUI RESPONSE DEBUG ===")
+        
+        logger.info(f"Workflow execution completed. Output nodes: {list(output_images.keys())}")
+        
+        # The video output should be in node 62 (VHS_VideoCombine)
+        # But since ComfyUI returns images, we need to handle video files differently
+        # For now, we'll return the generated frames and let the client handle video creation
+        result_videos = []
+        result_frames = []
+        
+        for node_id, images in output_images.items():
+            logger.info(f"Processing node {node_id} with {len(images)} outputs")
+            if node_id == "62":  # Video output node
+                # This should contain the video file, but ComfyUI API might return frames
+                for i, image_data in enumerate(images):
+                    logger.info(f"Processing video output {i+1}/{len(images)}, size: {len(image_data)} bytes")
+                    # Check if this is actually a video file or frames
+                    video_b64 = base64.b64encode(image_data).decode('utf-8')
+                    result_videos.append({
+                        'video': video_b64,
+                        'format': 'mp4'
+                    })
+            else:
+                # These are intermediate frames
+                for i, image_data in enumerate(images):
+                    logger.info(f"Processing frame {i+1}/{len(images)} from node {node_id}, size: {len(image_data)} bytes")
+                    frame_b64 = base64.b64encode(image_data).decode('utf-8')
+                    result_frames.append({
+                        'image': frame_b64,
+                        'format': 'png'
+                    })
+        
+        logger.info(f"Final result: {len(result_videos)} videos, {len(result_frames)} frames")
+        
+        return jsonify({
+            'success': True,
+            'videos': result_videos,
+            'frames': result_frames,
+            'parameters': {
+                'prompt': prompt,
+                'negative_prompt': negative_prompt,
+                'width': width,
+                'height': height,
+                'length': length,
+                'steps': steps,
+                'cfg': cfg,
+                'seed': seed,
+                'frame_rate': frame_rate,
+                'original_filename': filename
             }
         })
         
@@ -352,6 +537,28 @@ def edit_image():
             'error': str(e)
         }), 500
 
+@app.route('/interrupt', methods=['POST'])
+@handle_errors
+def interrupt_generation():
+    """Interrupt current generation in ComfyUI"""
+    try:
+        # Send interrupt request to ComfyUI server
+        req = urllib.request.Request(f"http://{SERVER_ADDRESS}/interrupt", method='POST')
+        with urllib.request.urlopen(req, timeout=5) as response:
+            result = response.read()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Generation interrupted successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to interrupt generation: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to interrupt generation: {str(e)}'
+        }), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -402,6 +609,24 @@ def list_workflows():
                     "steps": "integer (1-100, default: 4)",
                     "cfg": "float (0.1-30, default: 1)",
                     "seed": "integer (optional, random if not provided)"
+                }
+            },
+            {
+                "name": "wan-image-to-video",
+                "description": "Generate video from image using WAN Image-To-Video model",
+                "endpoint": "/image-to-video",
+                "method": "POST",
+                "parameters": {
+                    "image": "file or base64 string (required)",
+                    "prompt": "string (required)",
+                    "negative_prompt": "string (optional)",
+                    "width": "integer (default: 480)",
+                    "height": "integer (default: 832)",
+                    "length": "integer (frames, default: 81)",
+                    "steps": "integer (1-100, default: 6)",
+                    "cfg": "float (0.1-30, default: 1)",
+                    "seed": "integer (optional, random if not provided)",
+                    "frame_rate": "integer (default: 32)"
                 }
             }
         ]

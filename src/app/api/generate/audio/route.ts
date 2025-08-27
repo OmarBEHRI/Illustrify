@@ -60,12 +60,7 @@ export async function POST(req: Request) {
     
     // Save to PocketBase audio collection
     try {
-      await pbHelpers.saveAudio({
-        user: user.id,
-        transcript: text,
-        audio_file: saved.filename,
-        voice: voiceId
-      });
+      await pbHelpers.saveAudio(user.id, text, saved.filename, voiceId);
     } catch (pbError) {
       console.error('Failed to save audio to PocketBase:', pbError);
       // Continue anyway, don't fail the request

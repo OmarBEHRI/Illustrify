@@ -19,6 +19,10 @@ export interface Video {
   visual_style: string;
   quality: 'LOW' | 'HIGH' | 'MAX';
   video_url: string;
+  video_file?: string;
+  prompt?: string;
+  width?: number;
+  height?: number;
   thumbnail_url?: string;
   duration?: number;
   file_size?: number;
@@ -83,6 +87,15 @@ export interface Audio {
   audio_file: string;
   user: string;
   voice: string;
+  created: string;
+  updated: string;
+}
+
+export interface Animation {
+  id: string;
+  prompt: string;
+  user: string;
+  animation: string;
   created: string;
   updated: string;
 }
@@ -234,6 +247,24 @@ export const pbHelpers = {
     return records as Video[];
   },
 
+  async saveAnimatedVideo(userId: string, prompt: string, videoFile: File, width: number, height: number): Promise<Video> {
+    const formData = new FormData();
+    formData.append('user', userId);
+    formData.append('title', `Animation: ${prompt.substring(0, 50)}...`);
+    formData.append('prompt', prompt);
+    formData.append('width', width.toString());
+    formData.append('height', height.toString());
+    formData.append('video_file', videoFile);
+    formData.append('status', 'completed');
+    formData.append('story_input', prompt);
+    formData.append('visual_style', 'animation');
+    formData.append('quality', 'HIGH');
+    formData.append('video_url', '');
+    
+    const record = await pb.collection('videos').create(formData);
+    return record as Video;
+  },
+
   // Scene helpers
   async createScene(videoId: string, jobId: string, sceneData: {
     scene_order: number;
@@ -275,7 +306,7 @@ export const pbHelpers = {
   },
 
   // Image helpers
-  async saveImage(userId: string, prompt: string, imageFile: File, type: 'generation' | 'edit'): Promise<Image> {
+  async saveImage(userId: string, prompt: string, imageFile: File, type: 'generation' | 'edit' | 'imported'): Promise<Image> {
     const formData = new FormData();
     formData.append('prompt', prompt);
     formData.append('image_file', imageFile);
@@ -288,7 +319,7 @@ export const pbHelpers = {
 
   async getUserImages(userId: string): Promise<Image[]> {
     const images = await pb.collection('image').getFullList({
-      filter: `user = "${userId}" && (type = "generation" || type = "edit") && image_file != ""`,
+      filter: `user = "${userId}" && (type = "generation" || type = "edit" || type = "imported") && image_file != ""`,
       sort: '-created'
     });
     return images as Image[];
@@ -296,7 +327,7 @@ export const pbHelpers = {
 
   async getAllImages(): Promise<Image[]> {
     const images = await pb.collection('image').getFullList({
-      filter: `(type = "generation" || type = "edit") && image_file != ""`,
+      filter: `(type = "generation" || type = "edit" || type = "imported") && image_file != ""`,
       sort: '-created'
     });
     return images as Image[];
@@ -328,5 +359,32 @@ export const pbHelpers = {
       sort: '-created'
     });
     return audio as Audio[];
+  },
+
+  // Animation helpers
+  async saveAnimation(userId: string, prompt: string, animationFile: File): Promise<Animation> {
+    const formData = new FormData();
+    formData.append('user', userId);
+    formData.append('prompt', prompt);
+    formData.append('animation', animationFile);
+    
+    const record = await pb.collection('animations').create(formData);
+    return record as Animation;
+  },
+
+  async getUserAnimations(userId: string): Promise<Animation[]> {
+    const records = await pb.collection('animations').getFullList({
+      filter: `user = "${userId}"`,
+      sort: '-created',
+    });
+    return records as Animation[];
+  },
+
+  async getAllAnimations(): Promise<Animation[]> {
+    const records = await pb.collection('animations').getFullList({
+      sort: '-created',
+      expand: 'user',
+    });
+    return records as Animation[];
   },
 };
